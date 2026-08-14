@@ -1078,7 +1078,7 @@ sc_input_manager_handle_event(struct sc_input_manager *im,
             sc_input_manager_process_gamepad_button(im, &event->cbutton);
             break;
         case SDL_DROPFILE: {
-            if (!control) {
+            if (!control || !im->fp) {
                 break;
             }
             sc_input_manager_process_file(im, &event->drop);

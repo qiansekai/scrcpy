@@ -671,7 +671,7 @@ scrcpy(struct scrcpy_options *options) {
                 goto end;
             }
 
-            assert(serial);
+            assert(serial || options->no_adb);
             struct sc_usb_device usb_device;
             ok = sc_usb_select_device(&s->usb, serial, &usb_device);
             if (!ok) {

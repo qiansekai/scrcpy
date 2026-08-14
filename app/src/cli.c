@@ -2879,6 +2879,15 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
         return false;
     }
 
+    if (opts->no_adb
+            && (opts->keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_AOA
+                || opts->mouse_input_mode == SC_MOUSE_INPUT_MODE_AOA
+                || opts->gamepad_input_mode == SC_GAMEPAD_INPUT_MODE_AOA)) {
+        LOGE("--no-adb is incompatible with AOA input modes "
+             "(--keyboard=aoa, --mouse=aoa, --gamepad=aoa).");
+        return false;
+    }
+
     if (!opts->window) {
         // Without window, there cannot be any video playback
         opts->video_playback = false;
