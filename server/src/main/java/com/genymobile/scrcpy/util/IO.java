@@ -61,9 +61,14 @@ public final class IO {
     }
 
     public static void writeFully(OutputStream outputStream, ByteBuffer from) throws IOException {
-        byte[] buffer = new byte[from.remaining()];
-        from.get(buffer);
-        outputStream.write(buffer);
+        if (from.hasArray()) {
+            outputStream.write(from.array(), from.arrayOffset() + from.position(), from.remaining());
+            from.position(from.limit());
+        } else {
+            byte[] buffer = new byte[from.remaining()];
+            from.get(buffer);
+            outputStream.write(buffer);
+        }
     }
 
     public static String toString(InputStream inputStream) {

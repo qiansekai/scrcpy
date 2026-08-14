@@ -66,13 +66,13 @@ public final class DesktopConnection implements Closeable {
                 }
             } else {
                 if (video) {
-                    videoSocket = connect("0.0.0.0", tunnelPort);
+                    videoSocket = connect("127.0.0.1", tunnelPort);
                 }
                 if (audio) {
-                    audioSocket = connect("0.0.0.0", tunnelPort);
+                    audioSocket = connect("127.0.0.1", tunnelPort);
                 }
                 if (control) {
-                    controlSocket = connect("0.0.0.0", tunnelPort);
+                    controlSocket = connect("127.0.0.1", tunnelPort);
                 }
             }
         } catch (IOException | RuntimeException e) {
@@ -137,7 +137,7 @@ public final class DesktopConnection implements Closeable {
         // byte[] are always 0-initialized in java, no need to set '\0' explicitly
 
         OutputStream outputStream = getFirstSocket().getOutputStream();
-        outputStream.write(buffer, 0, len);
+        outputStream.write(buffer, 0, buffer.length);
     }
 
     public OutputStream getVideoOutputStream() throws IOException {
