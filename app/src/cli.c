@@ -2859,6 +2859,12 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
         return false;
     }
 
+    if (opts->no_adb && (selectors || opts->tcpip)) {
+        LOGE("--no-adb is incompatible with device selectors "
+             "(--serial, --select-usb, --select-tcpip, --tcpip).");
+        return false;
+    }
+
     bool otg = false;
     bool v4l2 = false;
 #ifdef HAVE_USB
@@ -2867,6 +2873,11 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
 #ifdef HAVE_V4L2
     v4l2 = !!opts->v4l2_device;
 #endif
+
+    if (opts->no_adb && otg) {
+        LOGE("--no-adb is incompatible with --otg");
+        return false;
+    }
 
     if (!opts->window) {
         // Without window, there cannot be any video playback

@@ -561,11 +561,11 @@ scrcpy(struct scrcpy_options *options) {
     struct sc_server_info *info = &s->server.info;
 
     const char *serial = s->server.serial;
-    assert(serial);
+    assert(serial || options->no_adb);
 
     struct sc_file_pusher *fp = NULL;
 
-    if (options->video_playback && options->control) {
+    if (options->video_playback && options->control && !options->no_adb) {
         if (!sc_file_pusher_init(&s->file_pusher, serial,
                                  options->push_target)) {
             goto end;
