@@ -86,6 +86,7 @@ const struct scrcpy_options scrcpy_options_default = {
     .mipmaps = true,
     .stay_awake = false,
     .force_adb_forward = false,
+    .no_adb = false,
     .disable_screensaver = false,
     .forward_key_repeat = true,
     .legacy_paste = false,

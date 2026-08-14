@@ -296,6 +296,7 @@ struct scrcpy_options {
     bool mipmaps;
     bool stay_awake;
     bool force_adb_forward;
+    bool no_adb;
     bool disable_screensaver;
     bool forward_key_repeat;
     bool legacy_paste;

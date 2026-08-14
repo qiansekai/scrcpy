@@ -522,21 +522,28 @@ sc_server_init(struct sc_server *server, const struct sc_server_params *params,
     // end of the program
     server->params = *params;
 
-    bool ok = sc_adb_init();
-    if (!ok) {
-        return false;
+    bool adb_initialized = false;
+    if (!params->no_adb) {
+        adb_initialized = sc_adb_init();
+        if (!adb_initialized) {
+            return false;
+        }
     }
 
-    ok = sc_mutex_init(&server->mutex);
+    bool ok = sc_mutex_init(&server->mutex);
     if (!ok) {
-        sc_adb_destroy();
+        if (adb_initialized) {
+            sc_adb_destroy();
+        }
         return false;
     }
 
     ok = sc_cond_init(&server->cond_stopped);
     if (!ok) {
         sc_mutex_destroy(&server->mutex);
-        sc_adb_destroy();
+        if (adb_initialized) {
+            sc_adb_destroy();
+        }
         return false;
     }
 
@@ -544,7 +551,9 @@ sc_server_init(struct sc_server *server, const struct sc_server_params *params,
     if (!ok) {
         sc_cond_destroy(&server->cond_stopped);
         sc_mutex_destroy(&server->mutex);
-        sc_adb_destroy();
+        if (adb_initialized) {
+            sc_adb_destroy();
+        }
         return false;
     }
 
@@ -592,7 +601,7 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
     assert(tunnel->enabled);
 
     const char *serial = server->serial;
-    assert(serial);
+    assert(serial || server->params.no_adb);
 
     bool video = server->params.video;
     bool audio = server->params.audio;
@@ -690,8 +699,10 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
     }
 
     // we don't need the adb tunnel anymore
-    sc_adb_tunnel_close(tunnel, &server->intr, serial,
-                        server->device_socket_name);
+    if (!server->params.no_adb) {
+        sc_adb_tunnel_close(tunnel, &server->intr, serial,
+                            server->device_socket_name);
+    }
 
     sc_socket first_socket = video ? video_socket
                            : audio ? audio_socket
@@ -732,7 +743,7 @@ fail:
         }
     }
 
-    if (tunnel->enabled) {
+    if (tunnel->enabled && !server->params.no_adb) {
         // Always leave this function with tunnel disabled
         sc_adb_tunnel_close(tunnel, &server->intr, serial,
                             server->device_socket_name);
@@ -930,7 +941,7 @@ sc_server_configure_tcpip_unknown_address(struct sc_server *server,
 
 static void
 sc_server_kill_adb_if_requested(struct sc_server *server) {
-    if (server->params.kill_adb_on_close) {
+    if (server->params.kill_adb_on_close && !server->params.no_adb) {
         LOGI("Killing adb server...");
         unsigned flags = SC_ADB_NO_STDOUT | SC_ADB_NO_STDERR | SC_ADB_NO_LOGERR;
         sc_adb_kill_server(&server->intr, flags);
@@ -942,6 +953,45 @@ run_server(void *data) {
     struct sc_server *server = data;
 
     const struct sc_server_params *params = &server->params;
+
+    if (params->no_adb) {
+        // The scrcpy server is expected to already be running on the device,
+        // listening on --tunnel-host:--tunnel-port. Connect directly, without
+        // adb.
+        if (!params->tunnel_host) {
+            LOGE("--no-adb requires --tunnel-host");
+            goto error_connection_failed;
+        }
+        uint16_t tunnel_port = params->tunnel_port ? params->tunnel_port : 27183;
+        server->tunnel.enabled = true;
+        server->tunnel.forward = true;
+        server->tunnel.local_port = tunnel_port; // fallback if tunnel_port unset
+
+        bool ok = sc_server_connect_to(server, &server->info);
+        if (!ok) {
+            goto error_connection_failed;
+        }
+
+        server->cbs->on_connected(server, server->cbs_userdata);
+
+        sc_mutex_lock(&server->mutex);
+        while (!server->stopped) {
+            sc_cond_wait(&server->cond_stopped, &server->mutex);
+        }
+        sc_mutex_unlock(&server->mutex);
+
+        if (server->video_socket != SC_SOCKET_NONE) {
+            net_interrupt(server->video_socket);
+        }
+        if (server->audio_socket != SC_SOCKET_NONE) {
+            net_interrupt(server->audio_socket);
+        }
+        if (server->control_socket != SC_SOCKET_NONE) {
+            net_interrupt(server->control_socket);
+        }
+
+        return 0;
+    }
 
     // Execute "adb start-server" before "adb devices" so that daemon starting
     // output/errors is correctly printed in the console ("adb devices" output
@@ -1196,5 +1246,7 @@ sc_server_destroy(struct sc_server *server) {
     sc_cond_destroy(&server->cond_stopped);
     sc_mutex_destroy(&server->mutex);
 
-    sc_adb_destroy();
+    if (!server->params.no_adb) {
+        sc_adb_destroy();
+    }
 }

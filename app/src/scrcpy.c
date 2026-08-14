@@ -462,6 +462,7 @@ scrcpy(struct scrcpy_options *options) {
         .camera_ar = options->camera_ar,
         .camera_fps = options->camera_fps,
         .force_adb_forward = options->force_adb_forward,
+        .no_adb = options->no_adb,
         .power_off_on_close = options->power_off_on_close,
         .clipboard_autosync = options->clipboard_autosync,
         .downsize_on_error = options->downsize_on_error,
