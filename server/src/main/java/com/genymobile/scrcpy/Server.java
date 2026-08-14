@@ -101,7 +101,7 @@ public final class Server {
 
         List<AsyncProcessor> asyncProcessors = new ArrayList<>();
 
-        DesktopConnection connection = DesktopConnection.open(scid, tunnelForward, video, audio, control, sendDummyByte);
+        DesktopConnection connection = DesktopConnection.open(scid, tunnelForward, options.getTunnelPort(), video, audio, control, sendDummyByte);
         try {
             if (options.getSendDeviceMeta()) {
                 connection.sendDeviceMeta(Device.getDeviceName());
@@ -125,7 +125,8 @@ public final class Server {
                     audioCapture = new AudioPlaybackCapture(options.getAudioDup());
                 }
 
-                Streamer audioStreamer = new Streamer(connection.getAudioFd(), audioCodec, options.getSendCodecMeta(), options.getSendFrameMeta());
+                Streamer audioStreamer = new Streamer(connection.getAudioOutputStream(), audioCodec, options.getSendCodecMeta(),
+                        options.getSendFrameMeta());
                 AsyncProcessor audioRecorder;
                 if (audioCodec == AudioCodec.RAW) {
                     audioRecorder = new AudioRawRecorder(audioCapture, audioStreamer);
@@ -136,7 +137,7 @@ public final class Server {
             }
 
             if (video) {
-                Streamer videoStreamer = new Streamer(connection.getVideoFd(), options.getVideoCodec(), options.getSendCodecMeta(),
+                Streamer videoStreamer = new Streamer(connection.getVideoOutputStream(), options.getVideoCodec(), options.getSendCodecMeta(),
                         options.getSendFrameMeta());
                 SurfaceCapture surfaceCapture;
                 if (options.getVideoSource() == VideoSource.DISPLAY) {
