@@ -145,17 +145,36 @@ public final class DesktopConnection implements Closeable {
     }
 
     public void shutdown() throws IOException {
+        // shutdown on a socket already closed by the peer raises ENOTCONN; ignore it
         if (videoSocket != null) {
-            videoSocket.shutdownInput();
-            videoSocket.shutdownOutput();
+            try {
+                videoSocket.shutdownInput();
+            } catch (IOException ignored) {
+            }
+            try {
+                videoSocket.shutdownOutput();
+            } catch (IOException ignored) {
+            }
         }
         if (audioSocket != null) {
-            audioSocket.shutdownInput();
-            audioSocket.shutdownOutput();
+            try {
+                audioSocket.shutdownInput();
+            } catch (IOException ignored) {
+            }
+            try {
+                audioSocket.shutdownOutput();
+            } catch (IOException ignored) {
+            }
         }
         if (controlSocket != null) {
-            controlSocket.shutdownInput();
-            controlSocket.shutdownOutput();
+            try {
+                controlSocket.shutdownInput();
+            } catch (IOException ignored) {
+            }
+            try {
+                controlSocket.shutdownOutput();
+            } catch (IOException ignored) {
+            }
         }
     }
 
