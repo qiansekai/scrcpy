@@ -25,7 +25,7 @@ export function useStream(
   // 音频（设备默认 Opus）
   let audioDecoder: AudioDecoder | null = null
   let audioCtx: AudioContext | null = null
-  let opusHead: Uint8Array | null = null
+  let opusConfig: { description: Uint8Array; sampleRate: number; numberOfChannels: number } | null = null
   const ctx = canvas.getContext('2d')
   const connected = ref(false)
   const dims = reactive({ width: 0, height: 0 })
@@ -36,25 +36,40 @@ export function useStream(
     return audioCtx
   }
 
-  // 设备 Opus 配置帧 = AOPUSHDR(8) + size(8, native 小端) + OpusHead(size)。
-  function extractOpusHead(payload: Uint8Array): Uint8Array | null {
+  // 设备端 fixOpusConfigPacket 已把音频配置帧 payload 裁成纯 OpusHead。
+  // 解析出 AudioDecoderConfig 需要的 sampleRate/numberOfChannels。
+  function parseOpusHead(payload: Uint8Array): { description: Uint8Array; sampleRate: number; numberOfChannels: number } | null {
     if (payload.length < 16) return null
-    const id = String.fromCharCode(...payload.slice(0, 8))
-    if (id !== 'AOPUSHDR') return null
     const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
-    const size = Number(dv.getBigUint64(8, true))
-    if (size <= 0 || 16 + size > payload.length) return null
-    return payload.slice(16, 16 + size)
+    return {
+      description: payload,
+      sampleRate: dv.getUint32(12, true),
+      numberOfChannels: payload[9],
+    }
   }
 
   function playAudioData(audioData: AudioData) {
     const actx = ensureAudioCtx()
-    const { numberOfChannels, numberOfFrames, sampleRate } = audioData
+    const { numberOfChannels, numberOfFrames, sampleRate, format } = audioData
     const buf = actx.createBuffer(numberOfChannels, numberOfFrames, sampleRate)
-    for (let ch = 0; ch < numberOfChannels; ch++) {
-      const chData = new Float32Array(numberOfFrames)
-      audioData.copyTo(chData, { planeIndex: ch })
-      buf.copyToChannel(chData, ch)
+    if (format === 'f32-planar' || format === 's16-planar') {
+      for (let ch = 0; ch < numberOfChannels; ch++) {
+        const bytes = audioData.allocationSize({ planeIndex: ch })
+        const chData = new Float32Array(bytes / 4)
+        audioData.copyTo(chData, { planeIndex: ch })
+        buf.copyToChannel(chData, ch)
+      }
+    } else {
+      // interleaved（如 f32）：整块拷贝后拆到各 channel。
+      const inter = new Float32Array(numberOfFrames * numberOfChannels)
+      audioData.copyTo(inter, { planeIndex: 0 })
+      for (let ch = 0; ch < numberOfChannels; ch++) {
+        const chData = new Float32Array(numberOfFrames)
+        for (let i = 0; i < numberOfFrames; i++) {
+          chData[i] = inter[i * numberOfChannels + ch]
+        }
+        buf.copyToChannel(chData, ch)
+      }
     }
     audioData.close()
     const src = actx.createBufferSource()
@@ -84,15 +99,20 @@ export function useStream(
   function handleAudioFrame(flags: number, payload: Uint8Array) {
     const isConfig = (flags & 0x01) !== 0
     if (isConfig) {
-      opusHead = extractOpusHead(payload)
-      if (!opusHead) {
-        console.warn('unable to extract OpusHead from config frame')
+      opusConfig = parseOpusHead(payload)
+      if (!opusConfig) {
+        console.warn('unable to parse OpusHead from config frame')
         return
       }
       setupAudioDecoder()
       if (audioDecoder && audioDecoder.state === 'unconfigured') {
         try {
-          audioDecoder.configure({ codec: 'opus', description: opusHead })
+          audioDecoder.configure({
+            codec: 'opus',
+            sampleRate: opusConfig.sampleRate,
+            numberOfChannels: opusConfig.numberOfChannels,
+            description: opusConfig.description,
+          })
         } catch (e) {
           console.error('AudioDecoder configure failed', e)
         }
@@ -100,11 +120,15 @@ export function useStream(
       return
     }
     if (!audioDecoder || audioDecoder.state !== 'configured') return
-    audioDecoder.decode(new EncodedAudioChunk({
-      type: 'delta',
-      timestamp: performance.now() * 1000,
-      data: payload,
-    }))
+    try {
+      audioDecoder.decode(new EncodedAudioChunk({
+        type: 'key', // Opus 每包独立可解码；WebCodecs 音频首块需 key
+        timestamp: performance.now() * 1000,
+        data: payload,
+      }))
+    } catch (e) {
+      console.error('AudioDecoder decode failed', e)
+    }
   }
 
   function closeAudio() {
@@ -118,7 +142,7 @@ export function useStream(
     }
     audioCtx?.close().catch(() => {})
     audioCtx = null
-    opusHead = null
+    opusConfig = null
   }
 
   function setupDecoder() {
