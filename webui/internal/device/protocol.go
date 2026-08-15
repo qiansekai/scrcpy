@@ -31,17 +31,22 @@ type VideoFrame struct {
 }
 
 type VideoStream struct {
-	r       io.Reader
-	Device  string
-	Codec   [4]byte
-	Session SessionInfo
-	hdr     [12]byte
-	frame   []byte
+	r          io.Reader
+	Device     string
+	Codec      [4]byte
+	Session    SessionInfo
+	hdr        [12]byte
+	frame      []byte
+	header     []byte      // dummy+name+codec，原生客户端桥接重放
+	LastHeader [12]byte    // 最近一次读的 12B 头（session meta / frame meta）
 }
 
 func NewVideoStream(r io.Reader) *VideoStream {
 	return &VideoStream{r: r}
 }
+
+// StreamHeader 返回流头（dummy + 设备名 + codec id），原生客户端桥接用。
+func (vs *VideoStream) StreamHeader() []byte { return vs.header }
 
 // ReadMeta consumes the dummy byte, 64-byte device name, and 4-byte codec id.
 func (vs *VideoStream) ReadMeta() error {
@@ -60,6 +65,11 @@ func (vs *VideoStream) ReadMeta() error {
 	if vs.Codec != CodecH264 {
 		return fmt.Errorf("unsupported video codec %q, only h264", vs.Codec)
 	}
+	h := make([]byte, 0, 1+DeviceNameLen+4)
+	h = append(h, dummy[:]...)
+	h = append(h, name[:]...)
+	h = append(h, vs.Codec[:]...)
+	vs.header = h
 	return nil
 }
 
@@ -69,6 +79,7 @@ func (vs *VideoStream) Next() (*VideoFrame, *SessionInfo, error) {
 	if _, err := io.ReadFull(vs.r, vs.hdr[:]); err != nil {
 		return nil, nil, err
 	}
+	copy(vs.LastHeader[:], vs.hdr[:])
 	if binary.BigEndian.Uint32(vs.hdr[0:4])&0x80000000 != 0 {
 		vs.Session = SessionInfo{
 			Width:  int(binary.BigEndian.Uint32(vs.hdr[4:8])),

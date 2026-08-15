@@ -5,12 +5,55 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"scrcpy-lan/webui/internal/control"
 )
 
 const defaultVideoPort = 27183
+
+// teeWriter 把写入同时转给当前 tee 目标（默认丢弃）。用于把设备的原始
+// 视频/音频/控制字节分流给原生 scrcpy 客户端，而不影响 web 的解析路径。
+type teeWriter struct {
+	mu sync.RWMutex
+	w  io.Writer
+}
+
+func newTeeWriter() *teeWriter {
+	return &teeWriter{w: io.Discard}
+}
+
+func (t *teeWriter) Set(w io.Writer) {
+	t.mu.Lock()
+	t.w = w
+	t.mu.Unlock()
+}
+
+func (t *teeWriter) Write(p []byte) (int, error) {
+	t.mu.RLock()
+	w := t.w
+	t.mu.RUnlock()
+	n, err := w.Write(p)
+	if err != nil {
+		t.Set(io.Discard) // 原生端断开，停 tee，web 不受影响
+	}
+	return n, err
+}
+
+// teeReader 读 src 时把读到的字节同时写给 tee。
+type teeReader struct {
+	src io.Reader
+	tee *teeWriter
+}
+
+func (r *teeReader) Read(p []byte) (int, error) {
+	n, err := r.src.Read(p)
+	if n > 0 {
+		r.tee.Write(p[:n])
+	}
+	return n, err
+}
 
 type SessionConfig struct {
 	ID        string
@@ -34,6 +77,15 @@ type StreamSession struct {
 	done chan struct{}
 	name string
 	mu   sync.RWMutex
+
+	// 原生客户端桥接（AttachNative 用）
+	videoHeader []byte
+	audioHeader []byte
+	videoTee    *teeWriter
+	audioTee    *teeWriter
+	controlTee  *teeWriter
+	headerOnce  sync.Once
+	headerReady chan struct{}
 }
 
 func NewStreamSession(cfg SessionConfig, b Broadcaster) *StreamSession {
@@ -41,11 +93,15 @@ func NewStreamSession(cfg SessionConfig, b Broadcaster) *StreamSession {
 		cfg.VideoPort = defaultVideoPort
 	}
 	return &StreamSession{
-		cfg:  cfg,
-		b:    b,
-		ctrl: make(chan []byte, 256),
-		stop: make(chan struct{}),
-		done: make(chan struct{}),
+		cfg:         cfg,
+		b:           b,
+		ctrl:        make(chan []byte, 256),
+		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
+		videoTee:    newTeeWriter(),
+		audioTee:    newTeeWriter(),
+		controlTee:  newTeeWriter(),
+		headerReady: make(chan struct{}),
 	}
 }
 
@@ -117,12 +173,13 @@ func (s *StreamSession) connectOnce() error {
 	}
 	defer ctl.Close()
 
-	vs := NewVideoStream(video)
+	vs := NewVideoStream(&teeReader{src: video, tee: s.videoTee})
 	if err := vs.ReadMeta(); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	s.name = vs.Device
+	s.videoHeader = append([]byte(nil), vs.StreamHeader()...)
 	s.mu.Unlock()
 
 	// Reader errors propagate to the writer so a device disconnect on a quiet
@@ -137,11 +194,14 @@ func (s *StreamSession) connectOnce() error {
 
 	// audio reader: parse and forward instead of discarding, so browsers get sound.
 	go func() {
-		as := NewAudioStream(audio)
+		as := NewAudioStream(&teeReader{src: audio, tee: s.audioTee})
 		if err := as.ReadMeta(); err != nil {
 			fail(err)
 			return
 		}
+		s.mu.Lock()
+		s.audioHeader = append([]byte(nil), as.StreamHeader()...)
+		s.mu.Unlock()
 		for {
 			f, err := as.Next()
 			if err != nil {
@@ -161,6 +221,11 @@ func (s *StreamSession) connectOnce() error {
 				return
 			}
 			if sess != nil {
+				// 缓存 session meta 到流头，原生客户端桥接需要完整头。
+				s.mu.Lock()
+				s.videoHeader = append(s.videoHeader, vs.LastHeader[:]...)
+				s.mu.Unlock()
+				s.headerOnce.Do(func() { close(s.headerReady) })
 				s.b.PublishSession(s.cfg.ID, *sess)
 				continue
 			}
@@ -170,7 +235,7 @@ func (s *StreamSession) connectOnce() error {
 
 	// device->client reader.
 	go func() {
-		cr := control.NewReader(ctl)
+		cr := control.NewReader(&teeReader{src: ctl, tee: s.controlTee})
 		for {
 			m, err := cr.Read()
 			if err != nil {
@@ -255,4 +320,92 @@ func (m *Manager) SendControl(id string, b []byte) error {
 	}
 	sess.SendControl(b)
 	return nil
+}
+
+func (m *Manager) Session(id string) *StreamSession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sessions[id]
+}
+
+// First 返回任意一个活动会话（单设备场景用），无则 nil。
+func (m *Manager) First() *StreamSession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, s := range m.sessions {
+		return s
+	}
+	return nil
+}
+
+// chanWriter 把字节缓冲后写入原生客户端连接（非阻塞，缓冲满则丢帧，
+// 实时视频/音频可接受少量缺帧）。
+type chanWriter struct {
+	ch   chan []byte
+	done atomic.Bool
+}
+
+func (cw *chanWriter) Write(p []byte) (int, error) {
+	if cw.done.Load() {
+		return 0, io.ErrClosedPipe
+	}
+	b := make([]byte, len(p))
+	copy(b, p)
+	select {
+	case cw.ch <- b:
+		return len(p), nil
+	default:
+		return len(p), nil // 缓冲满，丢帧
+	}
+}
+
+func (cw *chanWriter) run(c net.Conn) {
+	for b := range cw.ch {
+		if _, err := c.Write(b); err != nil {
+			cw.done.Store(true)
+			return
+		}
+	}
+}
+
+func newConnWriter(c net.Conn) io.Writer {
+	cw := &chanWriter{ch: make(chan []byte, 256)}
+	go cw.run(c)
+	return cw
+}
+
+// AttachNative 把原生 scrcpy 客户端的三路连接桥接到本设备会话：先重放
+// 流头（dummy+name+codec+session），之后设备原始字节经 tee 分流给原生
+// 客户端；原生客户端的控制消息转发给设备。断开时 tee 自动降级为丢弃，
+// 不影响 web 订阅者。
+func (s *StreamSession) AttachNative(video, audio, control net.Conn) {
+	select {
+	case <-s.headerReady:
+	case <-s.stop:
+		return
+	}
+	s.mu.RLock()
+	vh := s.videoHeader
+	ah := s.audioHeader
+	s.mu.RUnlock()
+
+	video.Write(vh[1:]) // 跳过 dummy（代理 accept video 时已发）
+	audio.Write(ah)
+	s.videoTee.Set(newConnWriter(video))
+	s.audioTee.Set(newConnWriter(audio))
+	s.controlTee.Set(newConnWriter(control))
+
+	// 原生客户端 -> 设备：控制消息原样转发。
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := control.Read(buf)
+			if err != nil {
+				return
+			}
+			b := make([]byte, n)
+			copy(b, buf[:n])
+			s.SendControl(b)
+		}
+	}()
 }

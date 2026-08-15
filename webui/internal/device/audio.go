@@ -21,17 +21,22 @@ type AudioStream struct {
 	Codec [4]byte
 	hdr   [12]byte
 	frame []byte
+	header []byte // codec id，原生客户端桥接重放
 }
 
 func NewAudioStream(r io.Reader) *AudioStream {
 	return &AudioStream{r: r}
 }
 
+// StreamHeader 返回 4B codec id，原生客户端桥接用。
+func (a *AudioStream) StreamHeader() []byte { return a.header }
+
 // ReadMeta consumes the 4-byte audio codec id ("opus", "aac", "flac", "raw").
 func (a *AudioStream) ReadMeta() error {
 	if _, err := io.ReadFull(a.r, a.Codec[:]); err != nil {
 		return fmt.Errorf("read audio codec id: %w", err)
 	}
+	a.header = append([]byte(nil), a.Codec[:]...)
 	return nil
 }
 
