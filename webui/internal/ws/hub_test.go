@@ -115,3 +115,57 @@ func TestUnsubscribeKeepsSameIDConn(t *testing.T) {
 	default:
 	}
 }
+
+// TestSubscribeReplaysCachedConfig: a browser connecting after the one-time
+// config frame was published must receive the cached session meta then the
+// cached config frame, before any live frame.
+func TestSubscribeReplaysCachedConfig(t *testing.T) {
+	h := NewHub()
+	live := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", live)
+
+	h.PublishSession("dev1", device.SessionInfo{Width: 1080, Height: 2400})
+	h.PublishFrame("dev1", &device.VideoFrame{Config: true, Data: []byte{0x00, 0x00, 0x00, 0x01, 0x67}})
+	for len(live.out) > 0 {
+		<-live.out
+	}
+
+	late := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", late)
+
+	read := func() ([]byte, bool) {
+		select {
+		case b := <-late.out:
+			return b, true
+		case <-time.After(time.Second):
+			return nil, false
+		}
+	}
+
+	b, ok := read()
+	if !ok {
+		t.Fatal("late conn got no replayed session")
+	}
+	if got := string(b); got != `{"type":"session","width":1080,"height":2400,"codec":"h264"}` {
+		t.Fatalf("replayed session = %s", got)
+	}
+	b, ok = read()
+	if !ok {
+		t.Fatal("late conn got no replayed config frame")
+	}
+	if b[0] != 0x01 || b[1]&0x01 == 0 {
+		t.Fatalf("replayed config frame = %x", b)
+	}
+	if len(b) != 2+5 || b[2] != 0x00 {
+		t.Fatalf("replayed config payload = %x", b)
+	}
+
+	h.PublishFrame("dev1", &device.VideoFrame{Data: []byte{0x65}})
+	b, ok = read()
+	if !ok {
+		t.Fatal("no live frame after replay")
+	}
+	if b[0] != 0x01 || b[1]&0x01 != 0 {
+		t.Fatalf("live frame = %x, want it after replay", b)
+	}
+}
