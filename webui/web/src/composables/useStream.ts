@@ -26,6 +26,8 @@ export function useStream(
   let audioDecoder: AudioDecoder | null = null
   let audioCtx: AudioContext | null = null
   let opusConfig: { description: Uint8Array; sampleRate: number; numberOfChannels: number } | null = null
+  let audioStarted = false
+  let playWhen = 0
   const ctx = canvas.getContext('2d')
   const connected = ref(false)
   const dims = reactive({ width: 0, height: 0 })
@@ -48,6 +50,8 @@ export function useStream(
     }
   }
 
+  // 用 createBufferSource + 时间调度播放：首帧缓冲 150ms 抗网络抖动，
+  // 后续帧按 playWhen 无缝衔接；帧到太晚（落后 >50ms）时追赶，避免延迟堆积。
   function playAudioData(audioData: AudioData) {
     const actx = ensureAudioCtx()
     const { numberOfChannels, numberOfFrames, sampleRate, format } = audioData
@@ -75,7 +79,14 @@ export function useStream(
     const src = actx.createBufferSource()
     src.buffer = buf
     src.connect(actx.destination)
-    src.start()
+    if (!audioStarted) {
+      playWhen = actx.currentTime + 0.15
+      audioStarted = true
+    } else if (playWhen < actx.currentTime - 0.05) {
+      playWhen = actx.currentTime + 0.05
+    }
+    src.start(playWhen)
+    playWhen += buf.duration
   }
 
   function setupAudioDecoder() {
@@ -143,6 +154,8 @@ export function useStream(
     audioCtx?.close().catch(() => {})
     audioCtx = null
     opusConfig = null
+    audioStarted = false
+    playWhen = 0
   }
 
   function setupDecoder() {
