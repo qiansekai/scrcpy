@@ -1,51 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
+import { useControl } from '../composables/useControl'
 import { useStream } from '../composables/useStream'
 
 const { id } = defineProps<{ id: string }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 const stream = ref<ReturnType<typeof useStream> | null>(null)
+const control = ref<ReturnType<typeof useControl> | null>(null)
 const err = ref('')
-let pointerDown = false
-
-function sendTouch(action: number, e: PointerEvent) {
-  const s = stream.value
-  const el = canvas.value
-  if (!s || !el) return
-  const dims = s.dims
-  if (!dims.width || !dims.height) return
-  const rect = el.getBoundingClientRect()
-  const x = ((e.clientX - rect.left) / rect.width) * dims.width
-  const y = ((e.clientY - rect.top) / rect.height) * dims.height
-  s.send({
-    type: 'touch',
-    action,
-    x,
-    y,
-    screenW: dims.width,
-    screenH: dims.height,
-  })
-}
-
-function onPointerDown(e: PointerEvent) {
-  pointerDown = true
-  canvas.value?.setPointerCapture(e.pointerId)
-  sendTouch(0, e)
-}
-
-function onPointerMove(e: PointerEvent) {
-  if (pointerDown) sendTouch(2, e)
-}
-
-function onPointerUp(e: PointerEvent) {
-  pointerDown = false
-  sendTouch(1, e)
-}
-
-function onPointerCancel(e: PointerEvent) {
-  pointerDown = false
-  sendTouch(1, e)
-}
 
 const KEYMAP: Record<string, number> = {
   Enter: 66, Backspace: 67, Tab: 61, Space: 62,
@@ -90,11 +52,8 @@ onMounted(async () => {
   if (!canvas.value) return
   const s = useStream(id, canvas.value)
   stream.value = s
-  const el = canvas.value
-  el.addEventListener('pointerdown', onPointerDown)
-  el.addEventListener('pointermove', onPointerMove)
-  el.addEventListener('pointerup', onPointerUp)
-  el.addEventListener('pointercancel', onPointerCancel)
+  control.value = useControl((m) => s.send(m), canvas, s.dims)
+  control.value.bind()
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
   try {
@@ -105,12 +64,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (canvas.value) {
-    canvas.value.removeEventListener('pointerdown', onPointerDown)
-    canvas.value.removeEventListener('pointermove', onPointerMove)
-    canvas.value.removeEventListener('pointerup', onPointerUp)
-    canvas.value.removeEventListener('pointercancel', onPointerCancel)
-  }
+  control.value?.unbind()
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('keyup', onKeyUp)
 })

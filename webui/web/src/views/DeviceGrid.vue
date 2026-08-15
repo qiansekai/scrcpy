@@ -69,7 +69,7 @@ async function del(dev: Device) {
     </v-row>
 
     <v-row no-gutters>
-      <v-col :cols="12" :md="selected ? 8 : 12" :lg="selected ? 9 : 12">
+      <v-col :cols="12" :md="selected ? 2 : 12" :lg="selected ? 2 : 12">
         <div class="thumb-wall">
           <DeviceThumb
             v-for="d in devices"
@@ -84,7 +84,7 @@ async function del(dev: Device) {
           />
         </div>
       </v-col>
-      <v-col v-if="selected" cols="12" md="4" lg="3">
+      <v-col v-if="selected" cols="12" md="10" lg="10">
         <PreviewPanel :device="selected" />
       </v-col>
     </v-row>
