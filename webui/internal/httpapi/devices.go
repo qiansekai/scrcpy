@@ -48,7 +48,7 @@ func (a *api) handleDevice(w http.ResponseWriter, r *http.Request) {
 func (a *api) list(w http.ResponseWriter) {
 	out := []deviceDTO{}
 	for _, d := range a.cfg.Devices {
-		out = append(out, deviceDTO{ID: d.ID, IP: d.IP, Online: a.mgr.Has(d.ID)})
+		out = append(out, deviceDTO{ID: d.ID, IP: d.IP, Online: a.mgr.Has(d.ID), Name: a.mgr.Name(d.ID)})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

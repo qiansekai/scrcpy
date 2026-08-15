@@ -225,6 +225,16 @@ func (m *Manager) Has(id string) bool {
 	return ok
 }
 
+func (m *Manager) Name(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	sess, ok := m.sessions[id]
+	if !ok {
+		return ""
+	}
+	return sess.Name()
+}
+
 func (m *Manager) SendControl(id string, b []byte) error {
 	m.mu.RLock()
 	sess, ok := m.sessions[id]

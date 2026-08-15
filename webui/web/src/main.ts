@@ -7,13 +7,13 @@ import * as directives from 'vuetify/directives'
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import App from './App.vue'
-import Devices from './views/Devices.vue'
+import DeviceGrid from './views/DeviceGrid.vue'
 import DeviceConsole from './views/DeviceConsole.vue'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: Devices },
+    { path: '/', component: DeviceGrid },
     { path: '/devices/:id', component: DeviceConsole, props: true },
   ],
 })

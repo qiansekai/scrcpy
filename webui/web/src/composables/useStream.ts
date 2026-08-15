@@ -8,7 +8,11 @@ export interface StreamHandle {
   send: (msg: Record<string, unknown>) => void
 }
 
-export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHandle {
+export function useStream(
+  deviceId: string,
+  canvas: HTMLCanvasElement,
+  opts?: { throttle?: number; fixedCanvas?: boolean },
+): StreamHandle {
   let ws: WebSocket | null = null
   let decoder: VideoDecoder | null = null
   let configData: Uint8Array | null = null
@@ -16,6 +20,8 @@ export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHa
   let width = 0
   let height = 0
   let firstKeySeen = false
+  let frameCount = 0
+  let firstDrawn = false
   const ctx = canvas.getContext('2d')
   const connected = ref(false)
   const dims = reactive({ width: 0, height: 0 })
@@ -28,9 +34,19 @@ export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHa
         if (!width || !height) {
           width = frame.displayWidth
           height = frame.displayHeight
-          canvas.width = width
-          canvas.height = height
+          if (!opts?.fixedCanvas) {
+            canvas.width = width
+            canvas.height = height
+          }
         }
+        frameCount++
+        // 第一帧永远画（静态屏帧少，节流不能跳过初始画面），之后按 throttle 抽帧。
+        const throttled = opts?.throttle && opts.throttle > 1 && frameCount % opts.throttle !== 0
+        if (firstDrawn && throttled) {
+          frame.close()
+          return
+        }
+        firstDrawn = true
         if (ctx) ctx.drawImage(frame, 0, 0, canvas.width, canvas.height)
         frame.close()
       },
@@ -124,8 +140,10 @@ export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHa
               if (m.type === 'session') {
                 width = m.width
                 height = m.height
-                canvas.width = width
-                canvas.height = height
+                if (!opts?.fixedCanvas) {
+                  canvas.width = width
+                  canvas.height = height
+                }
                 dims.width = width
                 dims.height = height
                 // 新会话 = 新流（重连/旋转换分辨率）：重建解码器并清掉旧参数，
