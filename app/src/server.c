@@ -606,6 +606,12 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
     bool video = server->params.video;
     bool audio = server->params.audio;
     bool control = server->params.control;
+    if (server->params.no_adb) {
+        // In no-adb mode the device-side server always listens for all three
+        // streams (video, audio, control). Force them all so the accepts line
+        // up on the server and no stream is skipped or misaligned.
+        video = audio = control = true;
+    }
 
     sc_socket video_socket = SC_SOCKET_NONE;
     sc_socket audio_socket = SC_SOCKET_NONE;

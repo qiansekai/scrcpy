@@ -109,13 +109,13 @@ public final class Server {
 
             Controller controller = null;
 
-            if (control) {
+            if (control && connection.hasControl()) {
                 ControlChannel controlChannel = connection.getControlChannel();
                 controller = new Controller(controlChannel, cleanUp, options);
                 asyncProcessors.add(controller);
             }
 
-            if (audio) {
+            if (audio && connection.hasAudio()) {
                 AudioCodec audioCodec = options.getAudioCodec();
                 AudioSource audioSource = options.getAudioSource();
                 AudioCapture audioCapture;

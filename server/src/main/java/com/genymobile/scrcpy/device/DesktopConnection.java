@@ -6,7 +6,7 @@ import com.genymobile.scrcpy.util.StringUtils;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -16,10 +16,11 @@ public final class DesktopConnection implements Closeable {
 
     private static final int DEVICE_NAME_FIELD_LENGTH = 64;
 
-    // Accept timeout so the resident server does not block forever when a
-    // client does not connect a stream (e.g. --no-audio/--no-control) or
-    // silently disappears. A SocketTimeoutException on the video accept is
-    // propagated so the session ends and the daemon restarts the server.
+    // Accept timeout so the resident server never blocks forever on a missing
+    // stream socket. The video accept loops on timeout (resident listening);
+    // audio/control accepts skip after the timeout so a client that only
+    // connects some streams cannot wedge the server. The client always connects
+    // all three streams in no-adb mode, so this is only a defensive fallback.
     private static final int ACCEPT_TIMEOUT_MS = 5000;
 
     private final Socket videoSocket;
@@ -49,12 +50,22 @@ public final class DesktopConnection implements Closeable {
         Socket controlSocket = null;
         try {
             if (tunnelForward) {
-                try (ServerSocket serverSocket = new ServerSocket(tunnelPort, 0, InetAddress.getByName("0.0.0.0"))) {
-                    serverSocket.setReuseAddress(true); // prevent EADDRINUSE on fast restart due to TIME_WAIT
+                // Construct unbound so setReuseAddress() takes effect before
+                // bind(): it prevents EADDRINUSE on fast restart (TIME_WAIT).
+                try (ServerSocket serverSocket = new ServerSocket()) {
+                    serverSocket.setReuseAddress(true);
+                    serverSocket.bind(new InetSocketAddress("0.0.0.0", tunnelPort), 0);
                     serverSocket.setSoTimeout(ACCEPT_TIMEOUT_MS);
                     if (video) {
-                        videoSocket = serverSocket.accept();
-                        videoSocket.setKeepAlive(true); // prevent permanent block on silent network loss
+                        while (true) {
+                            try {
+                                videoSocket = serverSocket.accept();
+                                videoSocket.setKeepAlive(true); // prevent permanent block on silent network loss
+                                break;
+                            } catch (SocketTimeoutException e) {
+                                // idle: no client yet, keep listening (resident, do not exit)
+                            }
+                        }
                         if (sendDummyByte) {
                             // send one byte so the client may read() to detect a connection error
                             videoSocket.getOutputStream().write(0);
@@ -123,6 +134,14 @@ public final class DesktopConnection implements Closeable {
             return audioSocket;
         }
         return controlSocket;
+    }
+
+    public boolean hasAudio() {
+        return audioSocket != null;
+    }
+
+    public boolean hasControl() {
+        return controlSocket != null;
     }
 
     public void shutdown() throws IOException {
