@@ -21,6 +21,9 @@ while true; do
         FAILS=0
         sleep 2
     else
+        # the previous app_process child (if any) has exited by now (cmdline
+        # gone), so wait reaps it instead of letting a zombie accumulate
+        wait 2>/dev/null
         : > "$LOG"
         if [ "$WAS_RUNNING" != "1" ]; then
             FAILS=$((FAILS+1))
