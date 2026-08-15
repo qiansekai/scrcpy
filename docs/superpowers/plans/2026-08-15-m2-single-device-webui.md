@@ -831,10 +831,10 @@ git commit -m "feat(webui): parse device messages (clipboard/ack/uhid)"
 **Interfaces:**
 - Consumes: `device.VideoStream`、`control.Reader`、`control.Writer`
 - Produces:
-  - `device.SessionConfig{ID, IP string; VideoPort int}`（VideoPort 默认 27183）
+  - `device.SessionConfig{ID, IP string; VideoPort int; Addr string}`（VideoPort 默认 27183；Addr 非空时优先 dial Addr，覆盖 IP:VideoPort）
   - `device.Broadcaster` 接口：`PublishSession(id string, s SessionInfo)`、`PublishFrame(id string, f *VideoFrame)`、`PublishDeviceMessage(id string, m *control.DeviceMessage)`
   - `device.StreamSession`：`NewStreamSession(cfg SessionConfig, b Broadcaster) *StreamSession`、`(*StreamSession).Start()`、`(*StreamSession).Stop()`、`(*StreamSession).SendControl(b []byte)`、`(*StreamSession).Name() string`
-  - `device.Manager`：`NewManager(b Broadcaster) *Manager`、`(*Manager).Add(cfg SessionConfig)`、`(*Manager).Remove(id string)`、`(*Manager).Status() []Status`、`(*Manager).SendControl(id string, b []byte) error`；`device.Status{ID, IP, Name string; Online bool; Width, Height int; Codec string}`
+  - `device.Manager`：`NewManager(b Broadcaster) *Manager`、`(*Manager).Add(cfg SessionConfig)`、`(*Manager).Remove(id string)`、`(*Manager).Has(id string) bool`、`(*Manager).SendControl(id string, b []byte) error`
 
 **连接顺序（关键）：** video → audio → control（设备端 ServerSocket 按此顺序 accept，顺序错则流错位）。audio 连接后启动 goroutine 读取并丢弃（防背压）。
 
@@ -1001,6 +1001,8 @@ type SessionConfig struct {
 	ID        string
 	IP        string
 	VideoPort int
+	// Addr 覆盖 IP:VideoPort（测试传完整地址含端口时使用）。
+	Addr string
 }
 
 type Broadcaster interface {
@@ -1080,6 +1082,9 @@ func (s *StreamSession) run() {
 
 func (s *StreamSession) connectOnce() error {
 	addr := net.JoinHostPort(s.cfg.IP, strconv.Itoa(s.cfg.VideoPort))
+	if s.cfg.Addr != "" {
+		addr = s.cfg.Addr
+	}
 
 	video, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -1105,14 +1110,30 @@ func (s *StreamSession) connectOnce() error {
 	s.name = vs.Device
 	s.mu.Unlock()
 
+	// connErr 把任一读取 goroutine 的首个错误传给下面的控制写循环，
+	// 否则设备在控制通道安静时断开，写循环停在 select 上永不返回，
+	// 重连永远不会触发。
+	connErr := make(chan error, 3)
+	fail := func(err error) {
+		select {
+		case connErr <- err:
+		default:
+		}
+	}
+
 	// audio: consume and discard so the device never backpressures.
-	go io.Copy(io.Discard, audio)
+	go func() {
+		if _, err := io.Copy(io.Discard, audio); err != nil {
+			fail(err)
+		}
+	}()
 
 	// video reader.
 	go func() {
 		for {
 			f, sess, err := vs.Next()
 			if err != nil {
+				fail(err)
 				return
 			}
 			if sess != nil {
@@ -1129,6 +1150,7 @@ func (s *StreamSession) connectOnce() error {
 		for {
 			m, err := cr.Read()
 			if err != nil {
+				fail(err)
 				return
 			}
 			s.b.PublishDeviceMessage(s.cfg.ID, m)
@@ -1144,15 +1166,10 @@ func (s *StreamSession) connectOnce() error {
 			if _, err := ctl.Write(b); err != nil {
 				return err
 			}
+		case err := <-connErr:
+			return err
 		}
 	}
-}
-
-type Status struct {
-	ID, IP, Name string
-	Online       bool
-	Width, Height int
-	Codec        string
 }
 
 type Manager struct {
@@ -1188,6 +1205,13 @@ func (m *Manager) Remove(id string) {
 	}
 }
 
+func (m *Manager) Has(id string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.sessions[id]
+	return ok
+}
+
 func (m *Manager) SendControl(id string, b []byte) error {
 	m.mu.RLock()
 	sess, ok := m.sessions[id]
@@ -1200,7 +1224,7 @@ func (m *Manager) SendControl(id string, b []byte) error {
 }
 ```
 
-> 说明：`Manager.Status()` 未在 M2 实现（需要 session 上报在线/宽高状态）。M2 的 REST 设备列表先返回 `store.Config` 中的条目 + `Manager` 是否有会话（Online 判定），视频宽高在浏览器端从 WS `session` 消息拿到。任务 7 里实现一个轻量 `Status`：Online = 会话存在。宽高展示留到 M3。
+> 说明：M2 不需要 `Status` 结构（REST 在线判定用 `Manager.Has()`，视频宽高由浏览器从 WS `session` 消息获取）。不要为实现而添加未使用的状态结构（YAGNI）。
 
 - [ ] **Step 4: 运行测试确认通过**
 
@@ -1785,8 +1809,6 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 ```
 
-`device.Manager` 需要补一个 `Has(id string) bool`（加锁检查 map 成员）。
-
 - [ ] **Step 4: 接线 main.go**
 
 修改 `webui/cmd/webui/main.go`：把 `mux` 换成 `httpapi.New(cfg, mgr, *configPath)`；创建 `device.NewManager(&hub)`，其中 hub 由 ws 包提供（Task 6 的 `NewHub()`）。同时把 `/ws/` 挂到 `ws.NewHandler(hub, mgr)`。main 里各包初始化顺序：hub → manager → httpapi。
@@ -2342,4 +2364,4 @@ git commit -m "docs(webui): integration run guide and gitignore"
 
 - **Spec 覆盖**：M2（单设备上屏）= 视频解析(T2)、控制注入(T3/T10)、WS 中继(T6)、设备发现-手动配置(T1/T7)、WebCodecs 解码(T9)、断线重连(T5)。M2 边界内的 spec 项全部有任务。音频按 M2 范围「连接并丢弃」处理（T5）。
 - **占位符**：无 TBD；`itoa/jsonQuote` 在 T6 中已给出实现（在 hub.go 内定义），import 缺失已在任务内提示补齐。
-- **类型一致性**：`device.VideoFrame/SessionInfo/Broadcaster`、`control.Touch/Key/Writer`、`device.Manager.Has()`（T7 新增）在后续任务引用一致。
+- **类型一致性**：`device.VideoFrame/SessionInfo/Broadcaster`、`control.Touch/Key/Writer`、`device.Manager.Has()`（Task 5 定义，Task 7 使用）在后续任务引用一致。
