@@ -50,8 +50,9 @@ export function useStream(
     }
   }
 
-  // 用 createBufferSource + 时间调度播放：首帧缓冲 150ms 抗网络抖动，
-  // 后续帧按 playWhen 无缝衔接；帧到太晚（落后 >50ms）时追赶，避免延迟堆积。
+  // 用 createBufferSource + 时间调度播放。缓冲量是平滑与延迟的权衡：
+  // 首帧缓冲 60ms（低延迟），播放时钟双向贴合 currentTime——落后就追，
+  // 超前太多就拉回，避免延迟在帧间累积。
   function playAudioData(audioData: AudioData) {
     const actx = ensureAudioCtx()
     const { numberOfChannels, numberOfFrames, sampleRate, format } = audioData
@@ -80,10 +81,14 @@ export function useStream(
     src.buffer = buf
     src.connect(actx.destination)
     if (!audioStarted) {
-      playWhen = actx.currentTime + 0.15
+      playWhen = actx.currentTime + 0.06
       audioStarted = true
-    } else if (playWhen < actx.currentTime - 0.05) {
-      playWhen = actx.currentTime + 0.05
+    } else {
+      if (playWhen < actx.currentTime - 0.02) {
+        playWhen = actx.currentTime + 0.02 // 落后太多，追上
+      } else if (playWhen > actx.currentTime + 0.2) {
+        playWhen = actx.currentTime + 0.08 // 超前累积，拉回
+      }
     }
     src.start(playWhen)
     playWhen += buf.duration
