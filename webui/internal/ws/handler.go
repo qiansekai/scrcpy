@@ -59,9 +59,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
 	}
-	// InsecureSkipVerify: accept the Vite dev proxy origin and any LAN client;
-	// M2 has no auth (YAGNI).
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	// localhost:* allows the Vite dev proxy (localhost:5173 / 127.0.0.1:5173)
+	// and same-host origins without opening the socket to any page. A browser
+	// on another machine connects same-origin (always allowed); only a
+	// cross-origin page would need that host's pattern added here.
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: []string{"localhost:*", "127.0.0.1:*"},
+	})
 	if err != nil {
 		return
 	}

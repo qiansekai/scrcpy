@@ -40,7 +40,7 @@ func (h *Hub) subscribe(deviceID string, c conn) {
 func (h *Hub) unsubscribe(deviceID string, c conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if m := h.subs[deviceID]; m != nil {
+	if m := h.subs[deviceID]; m != nil && m[c.ID()] == c {
 		delete(m, c.ID())
 	}
 }

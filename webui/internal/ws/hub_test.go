@@ -91,3 +91,27 @@ func TestPublishFrameCopiesPayload(t *testing.T) {
 		t.Fatal("no frame delivered")
 	}
 }
+
+// TestUnsubscribeKeepsSameIDConn: two conns share connID "c1" (like two
+// browser tabs). Closing one must not remove the other's subscription.
+func TestUnsubscribeKeepsSameIDConn(t *testing.T) {
+	h := NewHub()
+	a := &fakeConn{out: make(chan []byte, 16)}
+	b := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", a)
+	h.subscribe("dev1", b) // same ID, replaces a in the map
+
+	h.unsubscribe("dev1", a) // identity check: must leave b's entry
+
+	h.PublishFrame("dev1", &device.VideoFrame{Data: []byte{0x01}})
+	select {
+	case <-b.out:
+	case <-time.After(time.Second):
+		t.Fatal("b lost frames after a disconnected")
+	}
+	select {
+	case x := <-a.out:
+		t.Fatalf("a got frame after unsubscribe: %x", x)
+	default:
+	}
+}
