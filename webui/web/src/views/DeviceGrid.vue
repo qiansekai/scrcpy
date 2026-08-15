@@ -68,8 +68,9 @@ async function del(dev: Device) {
       </v-col>
     </v-row>
 
-    <v-row no-gutters>
-      <v-col :cols="12" :md="selected ? 2 : 12" :lg="selected ? 2 : 12">
+    <div class="layout-row" :class="{ 'has-preview': !!selected }">
+      <PreviewPanel v-if="selected" :device="selected" />
+      <div class="grid-slot">
         <div class="thumb-wall">
           <DeviceThumb
             v-for="d in devices"
@@ -83,11 +84,8 @@ async function del(dev: Device) {
             @delete="del(d)"
           />
         </div>
-      </v-col>
-      <v-col v-if="selected" cols="12" md="10" lg="10">
-        <PreviewPanel :device="selected" />
-      </v-col>
-    </v-row>
+      </div>
+    </div>
 
     <v-dialog v-model="dialog" width="400">
       <v-card>
@@ -107,6 +105,16 @@ async function del(dev: Device) {
 </template>
 
 <style scoped>
+.layout-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.grid-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .thumb-wall {
   display: flex;
   flex-wrap: wrap;

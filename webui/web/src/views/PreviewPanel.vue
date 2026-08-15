@@ -59,6 +59,9 @@ function shortcut(type: string) {
 .preview {
   position: sticky;
   top: 0;
+  /* 卡片贴合视频自身宽度，不撑满父容器，避免两侧大空白 */
+  width: fit-content;
+  max-width: 100%;
 }
 .preview-body {
   /* 收缩贴合视频自身比例，避免 contain 在容器内露黑边 */
