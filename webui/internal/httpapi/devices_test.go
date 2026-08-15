@@ -47,9 +47,9 @@ func TestDeviceLifecycle(t *testing.T) {
 	_ = json.Marshal
 }
 
-// startFakeDevice 监听本地端口，accept 后立即写出 scrcpy 视频握手
-// (dummy + 64B 设备名 + codec) 再关闭。probe 与 StreamSession 的连接都
-// 能快速得到确定性结果，不会挂起。
+// startFakeDevice 模拟真实 scrcpy 服务端的握手时序：video 连接 accept 后
+// 立即写 dummy，但 64B 设备名要等 audio、control 也 accept 后才写。probe
+// 必须建满三条连接才能读到设备名，否则会卡在读名字上。
 func startFakeDevice(t *testing.T) net.Listener {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -58,19 +58,26 @@ func startFakeDevice(t *testing.T) net.Listener {
 	}
 	t.Cleanup(func() { ln.Close() })
 	go func() {
-		for {
+		var video net.Conn
+		for round := 0; ; round = (round + 1) % 3 {
 			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			go func(c net.Conn) {
-				defer c.Close()
-				c.Write([]byte{0x00})
+			switch round {
+			case 0: // video：立即写 dummy，名字延后
+				video = c
+				video.Write([]byte{0x00})
+			case 1: // audio
+				c.Close()
+			case 2: // control：三条连接齐了，才写设备名 + codec
 				name := make([]byte, device.DeviceNameLen)
 				copy(name, "FakePhone")
-				c.Write(name)
-				c.Write(device.CodecH264[:])
-			}(c)
+				video.Write(name)
+				video.Write(device.CodecH264[:])
+				video.Close()
+				c.Close()
+			}
 		}
 	}()
 	return ln

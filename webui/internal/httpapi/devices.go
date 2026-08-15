@@ -96,22 +96,37 @@ func (a *api) remove(w http.ResponseWriter, id string) {
 }
 
 // probeDevice 连 27183 读 dummy+64B 设备名，用于添加前验证设备在线。
+// scrcpy 服务端按 video→audio→control 顺序接受连接，且要等三个连接都建好
+// 才写设备名，所以探测必须同样建立三条连接，否则会卡在读设备名上。
 func probeDevice(ip string) (string, error) {
 	addr := ip
 	if _, _, err := net.SplitHostPort(ip); err != nil {
 		addr = net.JoinHostPort(ip, "27183")
 	}
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	dial := func() (net.Conn, error) { return net.DialTimeout("tcp", addr, 2*time.Second) }
+	video, err := dial()
 	if err != nil {
 		return "", err
 	}
-	defer conn.Close()
+	defer video.Close()
+	audio, err := dial()
+	if err != nil {
+		return "", err
+	}
+	defer audio.Close()
+	ctl, err := dial()
+	if err != nil {
+		return "", err
+	}
+	defer ctl.Close()
+
+	video.SetReadDeadline(time.Now().Add(2 * time.Second))
 	var dummy [1]byte
-	if _, err := io.ReadFull(conn, dummy[:]); err != nil {
+	if _, err := io.ReadFull(video, dummy[:]); err != nil {
 		return "", err
 	}
 	var name [device.DeviceNameLen]byte
-	if _, err := io.ReadFull(conn, name[:]); err != nil {
+	if _, err := io.ReadFull(video, name[:]); err != nil {
 		return "", err
 	}
 	return strings.TrimRight(string(name[:]), "\x00"), nil
