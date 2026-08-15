@@ -4,3 +4,5 @@ webui.exe
 devices.json
 server.out.log
 server.err.log
+web/vite.out.log
+web/vite.err.log
