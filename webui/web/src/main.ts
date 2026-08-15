@@ -8,14 +8,10 @@ import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import App from './App.vue'
 import DeviceGrid from './views/DeviceGrid.vue'
-import DeviceConsole from './views/DeviceConsole.vue'
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: [
-    { path: '/', component: DeviceGrid },
-    { path: '/devices/:id', component: DeviceConsole, props: true },
-  ],
+  routes: [{ path: '/', component: DeviceGrid }],
 })
 
 createApp(App)

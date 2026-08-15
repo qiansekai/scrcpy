@@ -1,27 +1,29 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useControl } from '../composables/useControl'
+import { useKeyboard } from '../composables/useKeyboard'
 import { useStream } from '../composables/useStream'
 
 const props = defineProps<{ device: { id: string; ip: string; name?: string } }>()
-const router = useRouter()
 const canvas = ref<HTMLCanvasElement | null>(null)
 const stream = ref<ReturnType<typeof useStream> | null>(null)
 const control = ref<ReturnType<typeof useControl> | null>(null)
+const keyboard = ref<ReturnType<typeof useKeyboard> | null>(null)
 
 onMounted(() => {
   if (!canvas.value) return
   const s = useStream(props.device.id, canvas.value) // 全分辨率，无节流
   stream.value = s
-  const c = useControl((m) => s.send(m), canvas, s.dims)
-  control.value = c
-  c.bind()
+  control.value = useControl((m) => s.send(m), canvas, s.dims)
+  keyboard.value = useKeyboard((m) => s.send(m))
+  control.value.bind()
+  keyboard.value.bind()
   s.connect().catch(() => {})
 })
 
 onBeforeUnmount(() => {
   control.value?.unbind()
+  keyboard.value?.unbind()
   stream.value?.disconnect()
 })
 
@@ -41,13 +43,12 @@ function shortcut(type: string) {
           <div class="font-weight-medium text-truncate">{{ device.name || device.ip }}</div>
           <div class="text-caption text-medium-emphasis text-truncate">{{ device.ip }}</div>
         </div>
-        <v-btn size="small" color="primary" @click="router.push(`/devices/${device.id}`)">
-          完整控制台
-        </v-btn>
+        <v-btn size="x-small" variant="tonal" @click="$emit('close')">取消选中</v-btn>
       </div>
-      <div class="d-flex ga-1">
+      <div class="d-flex ga-1 flex-wrap">
         <v-btn size="x-small" @click="shortcut('home')">HOME</v-btn>
         <v-btn size="x-small" @click="shortcut('back')">BACK</v-btn>
+        <v-btn size="x-small" @click="shortcut('recents')">RECENTS</v-btn>
         <v-btn size="x-small" @click="shortcut('power')">电源</v-btn>
         <v-btn size="x-small" @click="shortcut('rotate')">旋转</v-btn>
       </div>

@@ -69,7 +69,7 @@ async function del(dev: Device) {
     </v-row>
 
     <div class="layout-row" :class="{ 'has-preview': !!selected }">
-      <PreviewPanel v-if="selected" :device="selected" />
+      <PreviewPanel v-if="selected" :device="selected" @close="selectedId = null" />
       <div class="grid-slot">
         <div class="thumb-wall">
           <DeviceThumb

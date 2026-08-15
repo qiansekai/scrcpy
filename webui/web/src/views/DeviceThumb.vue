@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useStream } from '../composables/useStream'
 
 const props = defineProps<{ id: string; ip: string; name?: string; online?: boolean; selected?: boolean }>()
 const emit = defineEmits<{ (e: 'select'): void; (e: 'delete'): void }>()
-const router = useRouter()
 const canvas = ref<HTMLCanvasElement | null>(null)
 let stream: ReturnType<typeof useStream> | null = null
 
@@ -22,10 +20,6 @@ onBeforeUnmount(() => {
 function select() {
   emit('select')
 }
-
-function open() {
-  router.push(`/devices/${props.id}`)
-}
 </script>
 
 <template>
@@ -34,7 +28,6 @@ function open() {
       <canvas ref="canvas" width="135" height="240" />
       <span v-if="!online" class="offline-dot" />
       <div class="thumb-actions">
-        <v-btn size="x-small" icon="mdi-open-in-new" variant="tonal" @click.stop="open" />
         <v-btn size="x-small" icon="mdi-delete" variant="tonal" @click.stop="$emit('delete')" />
       </div>
     </div>
