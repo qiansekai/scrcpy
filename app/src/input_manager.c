@@ -1130,7 +1130,7 @@ is_apk(const char *file) {
 static void
 sc_input_manager_process_file(struct sc_input_manager *im,
                               const SDL_DropEvent *event) {
-    if (im->camera || !im->controller || im->disconnected) {
+    if (im->camera || !im->controller || im->disconnected || !im->fp) {
         return;
     }
 

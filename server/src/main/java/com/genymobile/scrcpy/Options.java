@@ -38,6 +38,7 @@ public class Options {
     private float maxFps;
     private float angle;
     private boolean tunnelForward;
+    private int tunnelPort = 27183; // TCP port to listen on (LAN mode)
     private Rect crop;
     private boolean control = true;
     private int displayId;
@@ -149,6 +150,10 @@ public class Options {
 
     public boolean isTunnelForward() {
         return tunnelForward;
+    }
+
+    public int getTunnelPort() {
+        return tunnelPort;
     }
 
     public Rect getCrop() {
@@ -413,6 +418,13 @@ public class Options {
                     break;
                 case "tunnel_forward":
                     options.tunnelForward = Boolean.parseBoolean(value);
+                    break;
+                case "tunnel_port":
+                    int port = Integer.parseInt(value);
+                    if (port <= 0 || port > 0xFFFF) {
+                        throw new IllegalArgumentException("Invalid tunnel_port: " + value);
+                    }
+                    options.tunnelPort = port;
                     break;
                 case "crop":
                     if (!value.isEmpty()) {

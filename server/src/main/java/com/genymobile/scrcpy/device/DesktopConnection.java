@@ -1,70 +1,71 @@
 package com.genymobile.scrcpy.device;
 
 import com.genymobile.scrcpy.control.ControlChannel;
-import com.genymobile.scrcpy.util.IO;
 import com.genymobile.scrcpy.util.StringUtils;
 
-import android.net.LocalServerSocket;
-import android.net.LocalSocket;
-import android.net.LocalSocketAddress;
-
 import java.io.Closeable;
-import java.io.FileDescriptor;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 
 public final class DesktopConnection implements Closeable {
 
     private static final int DEVICE_NAME_FIELD_LENGTH = 64;
 
-    private static final String SOCKET_NAME_PREFIX = "scrcpy";
+    // Accept timeout so the resident server never blocks forever on a missing
+    // stream socket. The video accept loops on timeout (resident listening);
+    // audio/control accepts skip after the timeout so a client that only
+    // connects some streams cannot wedge the server. The client always connects
+    // all three streams in no-adb mode, so this is only a defensive fallback.
+    private static final int ACCEPT_TIMEOUT_MS = 5000;
 
-    private final LocalSocket videoSocket;
-    private final FileDescriptor videoFd;
-
-    private final LocalSocket audioSocket;
-    private final FileDescriptor audioFd;
-
-    private final LocalSocket controlSocket;
+    private final Socket videoSocket;
+    private final Socket audioSocket;
+    private final Socket controlSocket;
     private final ControlChannel controlChannel;
 
-    private DesktopConnection(LocalSocket videoSocket, LocalSocket audioSocket, LocalSocket controlSocket) throws IOException {
+    private DesktopConnection(Socket videoSocket, Socket audioSocket, Socket controlSocket) throws IOException {
         this.videoSocket = videoSocket;
         this.audioSocket = audioSocket;
         this.controlSocket = controlSocket;
-
-        videoFd = videoSocket != null ? videoSocket.getFileDescriptor() : null;
-        audioFd = audioSocket != null ? audioSocket.getFileDescriptor() : null;
+        if (controlSocket != null) {
+            // device->PC control messages must not be delayed by Nagle
+            controlSocket.setTcpNoDelay(true);
+        }
         controlChannel = controlSocket != null ? new ControlChannel(controlSocket) : null;
     }
 
-    private static LocalSocket connect(String abstractName) throws IOException {
-        LocalSocket localSocket = new LocalSocket();
-        localSocket.connect(new LocalSocketAddress(abstractName));
-        return localSocket;
+    private static Socket connect(String host, int port) throws IOException {
+        return new Socket(host, port);
     }
 
-    private static String getSocketName(int scid) {
-        if (scid == -1) {
-            // If no SCID is set, use "scrcpy" to simplify using scrcpy-server alone
-            return SOCKET_NAME_PREFIX;
-        }
-
-        return SOCKET_NAME_PREFIX + String.format("_%08x", scid);
-    }
-
-    public static DesktopConnection open(int scid, boolean tunnelForward, boolean video, boolean audio, boolean control, boolean sendDummyByte)
-            throws IOException {
-        String socketName = getSocketName(scid);
-
-        LocalSocket videoSocket = null;
-        LocalSocket audioSocket = null;
-        LocalSocket controlSocket = null;
+    public static DesktopConnection open(int scid, boolean tunnelForward, int tunnelPort, boolean video, boolean audio, boolean control,
+            boolean sendDummyByte) throws IOException {
+        Socket videoSocket = null;
+        Socket audioSocket = null;
+        Socket controlSocket = null;
         try {
             if (tunnelForward) {
-                try (LocalServerSocket localServerSocket = new LocalServerSocket(socketName)) {
+                // Construct unbound so setReuseAddress() takes effect before
+                // bind(): it prevents EADDRINUSE on fast restart (TIME_WAIT).
+                try (ServerSocket serverSocket = new ServerSocket()) {
+                    serverSocket.setReuseAddress(true);
+                    serverSocket.bind(new InetSocketAddress("0.0.0.0", tunnelPort), 0);
+                    serverSocket.setSoTimeout(ACCEPT_TIMEOUT_MS);
                     if (video) {
-                        videoSocket = localServerSocket.accept();
+                        while (true) {
+                            try {
+                                videoSocket = serverSocket.accept();
+                                videoSocket.setKeepAlive(true); // prevent permanent block on silent network loss
+                                break;
+                            } catch (SocketTimeoutException e) {
+                                // idle: no client yet, keep listening (resident, do not exit)
+                            }
+                        }
                         if (sendDummyByte) {
                             // send one byte so the client may read() to detect a connection error
                             videoSocket.getOutputStream().write(0);
@@ -72,31 +73,41 @@ public final class DesktopConnection implements Closeable {
                         }
                     }
                     if (audio) {
-                        audioSocket = localServerSocket.accept();
-                        if (sendDummyByte) {
-                            // send one byte so the client may read() to detect a connection error
-                            audioSocket.getOutputStream().write(0);
-                            sendDummyByte = false;
+                        try {
+                            audioSocket = serverSocket.accept();
+                            audioSocket.setKeepAlive(true);
+                            if (sendDummyByte) {
+                                // send one byte so the client may read() to detect a connection error
+                                audioSocket.getOutputStream().write(0);
+                                sendDummyByte = false;
+                            }
+                        } catch (SocketTimeoutException e) {
+                            audioSocket = null; // client did not connect audio, skip
                         }
                     }
                     if (control) {
-                        controlSocket = localServerSocket.accept();
-                        if (sendDummyByte) {
-                            // send one byte so the client may read() to detect a connection error
-                            controlSocket.getOutputStream().write(0);
-                            sendDummyByte = false;
+                        try {
+                            controlSocket = serverSocket.accept();
+                            controlSocket.setKeepAlive(true);
+                            if (sendDummyByte) {
+                                // send one byte so the client may read() to detect a connection error
+                                controlSocket.getOutputStream().write(0);
+                                sendDummyByte = false;
+                            }
+                        } catch (SocketTimeoutException e) {
+                            controlSocket = null; // client did not connect control, skip
                         }
                     }
                 }
             } else {
                 if (video) {
-                    videoSocket = connect(socketName);
+                    videoSocket = connect("127.0.0.1", tunnelPort);
                 }
                 if (audio) {
-                    audioSocket = connect(socketName);
+                    audioSocket = connect("127.0.0.1", tunnelPort);
                 }
                 if (control) {
-                    controlSocket = connect(socketName);
+                    controlSocket = connect("127.0.0.1", tunnelPort);
                 }
             }
         } catch (IOException | RuntimeException e) {
@@ -115,7 +126,7 @@ public final class DesktopConnection implements Closeable {
         return new DesktopConnection(videoSocket, audioSocket, controlSocket);
     }
 
-    private LocalSocket getFirstSocket() {
+    private Socket getFirstSocket() {
         if (videoSocket != null) {
             return videoSocket;
         }
@@ -123,6 +134,14 @@ public final class DesktopConnection implements Closeable {
             return audioSocket;
         }
         return controlSocket;
+    }
+
+    public boolean hasAudio() {
+        return audioSocket != null;
+    }
+
+    public boolean hasControl() {
+        return controlSocket != null;
     }
 
     public void shutdown() throws IOException {
@@ -160,16 +179,16 @@ public final class DesktopConnection implements Closeable {
         System.arraycopy(deviceNameBytes, 0, buffer, 0, len);
         // byte[] are always 0-initialized in java, no need to set '\0' explicitly
 
-        FileDescriptor fd = getFirstSocket().getFileDescriptor();
-        IO.writeFully(fd, buffer, 0, buffer.length);
+        OutputStream outputStream = getFirstSocket().getOutputStream();
+        outputStream.write(buffer, 0, buffer.length);
     }
 
-    public FileDescriptor getVideoFd() {
-        return videoFd;
+    public OutputStream getVideoOutputStream() throws IOException {
+        return videoSocket.getOutputStream();
     }
 
-    public FileDescriptor getAudioFd() {
-        return audioFd;
+    public OutputStream getAudioOutputStream() throws IOException {
+        return audioSocket.getOutputStream();
     }
 
     public ControlChannel getControlChannel() {

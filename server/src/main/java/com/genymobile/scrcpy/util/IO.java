@@ -11,6 +11,7 @@ import android.system.OsConstants;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Scanner;
 
@@ -57,6 +58,17 @@ public final class IO {
 
     public static void writeFully(FileDescriptor fd, byte[] buffer, int offset, int len) throws IOException {
         writeFully(fd, ByteBuffer.wrap(buffer, offset, len));
+    }
+
+    public static void writeFully(OutputStream outputStream, ByteBuffer from) throws IOException {
+        if (from.hasArray()) {
+            outputStream.write(from.array(), from.arrayOffset() + from.position(), from.remaining());
+            from.position(from.limit());
+        } else {
+            byte[] buffer = new byte[from.remaining()];
+            from.get(buffer);
+            outputStream.write(buffer);
+        }
     }
 
     public static String toString(InputStream inputStream) {

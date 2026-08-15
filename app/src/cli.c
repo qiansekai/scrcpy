@@ -37,6 +37,7 @@ enum {
     OPT_NO_MIPMAPS,
     OPT_VIDEO_CODEC_OPTIONS,
     OPT_FORCE_ADB_FORWARD,
+    OPT_NO_ADB,
     OPT_DISABLE_SCREENSAVER,
     OPT_SHORTCUT_MOD,
     OPT_NO_KEY_REPEAT,
@@ -408,6 +409,12 @@ static const struct sc_option options[] = {
         .longopt = "force-adb-forward",
         .text = "Do not attempt to use \"adb reverse\" to connect to the "
                 "device.",
+    },
+    {
+        .longopt_id = OPT_NO_ADB,
+        .longopt = "no-adb",
+        .text = "Do not use adb. Connect directly to --tunnel-host:--tunnel-port "
+                "(the scrcpy server must already be running).",
     },
     {
         .shortopt = 'G',
@@ -2771,6 +2778,9 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             case OPT_FORCE_ADB_FORWARD:
                 opts->force_adb_forward = true;
                 break;
+            case OPT_NO_ADB:
+                opts->no_adb = true;
+                break;
             case OPT_DISABLE_SCREENSAVER:
                 opts->disable_screensaver = true;
                 break;
@@ -3038,6 +3048,12 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
         return false;
     }
 
+    if (opts->no_adb && (selectors || opts->tcpip)) {
+        LOGE("--no-adb is incompatible with device selectors "
+             "(--serial, --select-usb, --select-tcpip, --tcpip).");
+        return false;
+    }
+
     bool otg = false;
     bool v4l2 = false;
 #ifdef HAVE_USB
@@ -3046,6 +3062,20 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
 #ifdef HAVE_V4L2
     v4l2 = !!opts->v4l2_device;
 #endif
+
+    if (opts->no_adb && otg) {
+        LOGE("--no-adb is incompatible with --otg");
+        return false;
+    }
+
+    if (opts->no_adb
+            && (opts->keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_AOA
+                || opts->mouse_input_mode == SC_MOUSE_INPUT_MODE_AOA
+                || opts->gamepad_input_mode == SC_GAMEPAD_INPUT_MODE_AOA)) {
+        LOGE("--no-adb is incompatible with AOA input modes "
+             "(--keyboard=aoa, --mouse=aoa, --gamepad=aoa).");
+        return false;
+    }
 
     if (!opts->window) {
         // Without window, there cannot be any video playback
@@ -3280,6 +3310,15 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             && !opts->mouse_hover) {
         LOGE("--no-mouse-over is specific to --mouse=sdk");
         return false;
+    }
+
+    if (opts->no_adb) {
+        // --no-adb connects directly to the server, without any adb tunnel
+        opts->force_adb_forward = true;
+        if (!opts->tunnel_host) {
+            LOGE("--no-adb requires --tunnel-host");
+            return false;
+        }
     }
 
     if ((opts->tunnel_host || opts->tunnel_port) && !opts->force_adb_forward) {

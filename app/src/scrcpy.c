@@ -465,6 +465,7 @@ scrcpy(struct scrcpy_options *options) {
         .camera_ar = options->camera_ar,
         .camera_fps = options->camera_fps,
         .force_adb_forward = options->force_adb_forward,
+        .no_adb = options->no_adb,
         .power_off_on_close = options->power_off_on_close,
         .clipboard_autosync = options->clipboard_autosync,
         .downsize_on_error = options->downsize_on_error,
@@ -577,11 +578,11 @@ scrcpy(struct scrcpy_options *options) {
     }
 
     const char *serial = s->server.serial;
-    assert(serial);
+    assert(serial || options->no_adb);
 
     struct sc_file_pusher *fp = NULL;
 
-    if (options->window && options->control) {
+    if (options->window && options->control && !options->no_adb) {
         if (!sc_file_pusher_init(&s->file_pusher, &s->controller, serial,
                                  options->push_target)) {
             goto end;
@@ -682,7 +683,7 @@ scrcpy(struct scrcpy_options *options) {
                 goto end;
             }
 
-            assert(serial);
+            assert(serial || options->no_adb);
             struct sc_usb_device usb_device;
             ok = sc_usb_select_device(&s->usb, serial, &usb_device);
             if (!ok) {
