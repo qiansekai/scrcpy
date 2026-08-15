@@ -42,11 +42,17 @@ function onPointerUp(e: PointerEvent) {
   sendTouch(1, e)
 }
 
+function onPointerCancel(e: PointerEvent) {
+  pointerDown = false
+  sendTouch(1, e)
+}
+
 const KEYMAP: Record<string, number> = {
   Enter: 66, Backspace: 67, Tab: 61, Space: 62,
   ArrowUp: 19, ArrowDown: 20, ArrowLeft: 21, ArrowRight: 22,
   Home: 122, End: 123, PageUp: 92, PageDown: 93,
-  Delete: 67, Escape: 111, Shift: 59, Control: 113, Alt: 57,
+  Delete: 67, Escape: 111,
+  ShiftLeft: 59, ShiftRight: 59, ControlLeft: 113, ControlRight: 113, AltLeft: 57, AltRight: 57,
 }
 
 const LETTERS: Record<string, number> = {
@@ -88,6 +94,7 @@ onMounted(async () => {
   el.addEventListener('pointerdown', onPointerDown)
   el.addEventListener('pointermove', onPointerMove)
   el.addEventListener('pointerup', onPointerUp)
+  el.addEventListener('pointercancel', onPointerCancel)
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
   try {
@@ -102,6 +109,7 @@ onBeforeUnmount(() => {
     canvas.value.removeEventListener('pointerdown', onPointerDown)
     canvas.value.removeEventListener('pointermove', onPointerMove)
     canvas.value.removeEventListener('pointerup', onPointerUp)
+    canvas.value.removeEventListener('pointercancel', onPointerCancel)
   }
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('keyup', onKeyUp)
