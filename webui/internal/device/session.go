@@ -124,14 +124,29 @@ func (s *StreamSession) connectOnce() error {
 	s.name = vs.Device
 	s.mu.Unlock()
 
+	// Reader errors propagate to the writer so a device disconnect on a quiet
+	// control channel still triggers reconnect.
+	connErr := make(chan error, 3)
+	fail := func(err error) {
+		select {
+		case connErr <- err:
+		default:
+		}
+	}
+
 	// audio: consume and discard so the device never backpressures.
-	go io.Copy(io.Discard, audio)
+	go func() {
+		if _, err := io.Copy(io.Discard, audio); err != nil {
+			fail(err)
+		}
+	}()
 
 	// video reader.
 	go func() {
 		for {
 			f, sess, err := vs.Next()
 			if err != nil {
+				fail(err)
 				return
 			}
 			if sess != nil {
@@ -148,6 +163,7 @@ func (s *StreamSession) connectOnce() error {
 		for {
 			m, err := cr.Read()
 			if err != nil {
+				fail(err)
 				return
 			}
 			s.b.PublishDeviceMessage(s.cfg.ID, m)
@@ -159,6 +175,8 @@ func (s *StreamSession) connectOnce() error {
 		select {
 		case <-s.stop:
 			return nil
+		case err := <-connErr:
+			return err
 		case b := <-s.ctrl:
 			if _, err := ctl.Write(b); err != nil {
 				return err

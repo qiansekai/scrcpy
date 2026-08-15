@@ -167,3 +167,79 @@ func TestSessionConnectsAndStreams(t *testing.T) {
 		t.Fatalf("device msgs = %+v", rec.msgs)
 	}
 }
+
+// multiRoundDevice 循环 accept，每轮 video→audio→control；每轮服务完即关闭连接，
+// 模拟设备掉线后重新接受连接（用于验证断线重连）。
+type multiRoundDevice struct {
+	ln net.Listener
+}
+
+func startMultiRoundDevice(t *testing.T) *multiRoundDevice {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	d := &multiRoundDevice{ln: ln}
+	go d.serve()
+	t.Cleanup(func() { ln.Close() })
+	return d
+}
+
+func (d *multiRoundDevice) serve() {
+	for {
+		video, err := d.ln.Accept()
+		if err != nil {
+			return
+		}
+		video.Write([]byte{0x00})
+		name := make([]byte, DeviceNameLen)
+		copy(name, "FakePhone")
+		video.Write(name)
+		video.Write(CodecH264[:])
+		writeSessionAndFrames(video)
+		video.Close()
+
+		audio, err := d.ln.Accept()
+		if err != nil {
+			return
+		}
+		audio.Write([]byte{'o', 'p', 'u', 's'})
+		audio.Close()
+
+		ctl, err := d.ln.Accept()
+		if err != nil {
+			return
+		}
+		// 客户端断开 control 即视为设备掉线，随后进入下一轮 accept。
+		io.Copy(io.Discard, ctl)
+		ctl.Close()
+	}
+}
+
+func TestSessionReconnectsOnDeviceLoss(t *testing.T) {
+	d := startMultiRoundDevice(t)
+	rec := &recordingBroadcaster{}
+	cfg := SessionConfig{ID: "dev1", Addr: d.ln.Addr().String()}
+	sess := NewStreamSession(cfg, rec)
+	sess.Start()
+	defer sess.Stop()
+
+	// round 1
+	deadline := time.Now().Add(3 * time.Second)
+	for rec.frameCount() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if rec.frameCount() != 2 {
+		t.Fatalf("round1 frames = %d, want 2", rec.frameCount())
+	}
+
+	// 设备关闭 round 1 连接后，会话必须自动重连并流出第二轮数据。
+	deadline = time.Now().Add(6 * time.Second)
+	for rec.frameCount() < 4 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if rec.frameCount() < 4 {
+		t.Fatalf("after reconnect frames = %d, want >= 4", rec.frameCount())
+	}
+}
