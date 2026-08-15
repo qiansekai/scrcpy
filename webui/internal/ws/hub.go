@@ -15,11 +15,13 @@ type conn interface {
 	ID() string
 }
 
-// hubState caches the one-time stream preamble (session meta + H.264 SPS/PPS
-// config frame) so a browser that connects mid-stream can still decode.
+// hubState caches the stream preamble (session meta + H.264 SPS/PPS config
+// frame + last keyframe) so a browser that connects mid-stream can decode
+// immediately instead of waiting for the device's next keyframe.
 type hubState struct {
 	sessionJSON []byte
 	configFrame []byte
+	keyFrame    []byte
 }
 
 type Hub struct {
@@ -51,6 +53,9 @@ func (h *Hub) subscribe(deviceID string, c conn) {
 		if st.configFrame != nil {
 			c.Write(st.configFrame)
 		}
+		if st.keyFrame != nil {
+			c.Write(st.keyFrame)
+		}
 	}
 }
 
@@ -69,7 +74,10 @@ func (h *Hub) PublishSession(id string, s device.SessionInfo) {
 	if h.state[id] == nil {
 		h.state[id] = &hubState{}
 	}
+	// 新会话 = 新流，清掉上一个流的 config/keyframe，避免回放陈旧参数。
 	h.state[id].sessionJSON = payload
+	h.state[id].configFrame = nil
+	h.state[id].keyFrame = nil
 	h.broadcastLocked(id, payload)
 	h.mu.Unlock()
 }
@@ -84,12 +92,16 @@ func (h *Hub) PublishFrame(id string, f *device.VideoFrame) {
 		out[1] |= 0x02
 	}
 	copy(out[2:], f.Data)
-	if f.Config {
+	if f.Config || f.KeyFrame {
 		h.mu.Lock()
 		if h.state[id] == nil {
 			h.state[id] = &hubState{}
 		}
-		h.state[id].configFrame = out
+		if f.Config {
+			h.state[id].configFrame = out
+		} else {
+			h.state[id].keyFrame = out
+		}
 		h.broadcastLocked(id, out)
 		h.mu.Unlock()
 		return
