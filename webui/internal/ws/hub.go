@@ -16,12 +16,13 @@ type conn interface {
 }
 
 // hubState caches the stream preamble (session meta + H.264 SPS/PPS config
-// frame + last keyframe) so a browser that connects mid-stream can decode
-// immediately instead of waiting for the device's next keyframe.
+// frame + last keyframe + Opus config) so a browser that connects mid-stream
+// can decode immediately instead of waiting for the device's next keyframe.
 type hubState struct {
 	sessionJSON []byte
 	configFrame []byte
 	keyFrame    []byte
+	audioConfig []byte
 }
 
 type Hub struct {
@@ -56,6 +57,9 @@ func (h *Hub) subscribe(deviceID string, c conn) {
 		if st.keyFrame != nil {
 			c.Write(st.keyFrame)
 		}
+		if st.audioConfig != nil {
+			c.Write(st.audioConfig)
+		}
 	}
 }
 
@@ -74,12 +78,33 @@ func (h *Hub) PublishSession(id string, s device.SessionInfo) {
 	if h.state[id] == nil {
 		h.state[id] = &hubState{}
 	}
-	// 新会话 = 新流，清掉上一个流的 config/keyframe，避免回放陈旧参数。
+	// 新会话 = 新流，清掉上一个流的 config/keyframe/audio，避免回放陈旧参数。
 	h.state[id].sessionJSON = payload
 	h.state[id].configFrame = nil
 	h.state[id].keyFrame = nil
+	h.state[id].audioConfig = nil
 	h.broadcastLocked(id, payload)
 	h.mu.Unlock()
+}
+
+func (h *Hub) PublishAudioFrame(id string, f *device.AudioFrame) {
+	out := make([]byte, 2+len(f.Data))
+	out[0] = 0x02 // 音频帧
+	if f.Config {
+		out[1] |= 0x01
+	}
+	copy(out[2:], f.Data)
+	if f.Config {
+		h.mu.Lock()
+		if h.state[id] == nil {
+			h.state[id] = &hubState{}
+		}
+		h.state[id].audioConfig = out
+		h.broadcastLocked(id, out)
+		h.mu.Unlock()
+		return
+	}
+	h.broadcast(id, out)
 }
 
 func (h *Hub) PublishFrame(id string, f *device.VideoFrame) {

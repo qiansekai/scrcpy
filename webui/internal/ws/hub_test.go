@@ -242,3 +242,36 @@ func TestNewSessionClearsStaleCache(t *testing.T) {
 	default:
 	}
 }
+
+// TestPublishAudioFrame: audio frames go out as binary 0x02; the config frame
+// is cached and replayed to a late subscriber.
+func TestPublishAudioFrame(t *testing.T) {
+	h := NewHub()
+	live := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", live)
+
+	h.PublishAudioFrame("dev1", &device.AudioFrame{Config: true, Data: []byte{0x41, 0x4f}})
+	h.PublishAudioFrame("dev1", &device.AudioFrame{Data: []byte{0xfc, 0xff, 0x01}})
+
+	// live 连接按序收到 config(0x02|config) 与数据帧(0x02)
+	b := <-live.out
+	if b[0] != 0x02 || b[1]&0x01 == 0 {
+		t.Fatalf("audio config frame = %x", b)
+	}
+	b = <-live.out
+	if b[0] != 0x02 || b[1]&0x01 != 0 || b[2] != 0xfc {
+		t.Fatalf("audio data frame = %x", b)
+	}
+
+	// 晚订阅者应拿到缓存的音频 config
+	late := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", late)
+	select {
+	case b := <-late.out:
+		if b[0] != 0x02 || b[1]&0x01 == 0 {
+			t.Fatalf("replayed audio config = %x", b)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("late conn missing replayed audio config")
+	}
+}

@@ -22,6 +22,7 @@ type SessionConfig struct {
 type Broadcaster interface {
 	PublishSession(id string, s SessionInfo)
 	PublishFrame(id string, f *VideoFrame)
+	PublishAudioFrame(id string, f *AudioFrame)
 	PublishDeviceMessage(id string, m *control.DeviceMessage)
 }
 
@@ -134,10 +135,20 @@ func (s *StreamSession) connectOnce() error {
 		}
 	}
 
-	// audio: consume and discard so the device never backpressures.
+	// audio reader: parse and forward instead of discarding, so browsers get sound.
 	go func() {
-		if _, err := io.Copy(io.Discard, audio); err != nil {
+		as := NewAudioStream(audio)
+		if err := as.ReadMeta(); err != nil {
 			fail(err)
+			return
+		}
+		for {
+			f, err := as.Next()
+			if err != nil {
+				fail(err)
+				return
+			}
+			s.b.PublishAudioFrame(s.cfg.ID, f)
 		}
 	}()
 

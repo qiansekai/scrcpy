@@ -22,9 +22,104 @@ export function useStream(
   let firstKeySeen = false
   let frameCount = 0
   let firstDrawn = false
+  // 音频（设备默认 Opus）
+  let audioDecoder: AudioDecoder | null = null
+  let audioCtx: AudioContext | null = null
+  let opusHead: Uint8Array | null = null
   const ctx = canvas.getContext('2d')
   const connected = ref(false)
   const dims = reactive({ width: 0, height: 0 })
+
+  function ensureAudioCtx() {
+    if (!audioCtx) audioCtx = new AudioContext()
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
+    return audioCtx
+  }
+
+  // 设备 Opus 配置帧 = AOPUSHDR(8) + size(8, native 小端) + OpusHead(size)。
+  function extractOpusHead(payload: Uint8Array): Uint8Array | null {
+    if (payload.length < 16) return null
+    const id = String.fromCharCode(...payload.slice(0, 8))
+    if (id !== 'AOPUSHDR') return null
+    const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+    const size = Number(dv.getBigUint64(8, true))
+    if (size <= 0 || 16 + size > payload.length) return null
+    return payload.slice(16, 16 + size)
+  }
+
+  function playAudioData(audioData: AudioData) {
+    const actx = ensureAudioCtx()
+    const { numberOfChannels, numberOfFrames, sampleRate } = audioData
+    const buf = actx.createBuffer(numberOfChannels, numberOfFrames, sampleRate)
+    for (let ch = 0; ch < numberOfChannels; ch++) {
+      const chData = new Float32Array(numberOfFrames)
+      audioData.copyTo(chData, { planeIndex: ch })
+      buf.copyToChannel(chData, ch)
+    }
+    audioData.close()
+    const src = actx.createBufferSource()
+    src.buffer = buf
+    src.connect(actx.destination)
+    src.start()
+  }
+
+  function setupAudioDecoder() {
+    if (audioDecoder) {
+      try {
+        audioDecoder.close()
+      } catch {
+        // already closed
+      }
+    }
+    audioDecoder = new AudioDecoder({
+      output(audioData) {
+        playAudioData(audioData)
+      },
+      error(e) {
+        console.error('AudioDecoder error', e)
+      },
+    })
+  }
+
+  function handleAudioFrame(flags: number, payload: Uint8Array) {
+    const isConfig = (flags & 0x01) !== 0
+    if (isConfig) {
+      opusHead = extractOpusHead(payload)
+      if (!opusHead) {
+        console.warn('unable to extract OpusHead from config frame')
+        return
+      }
+      setupAudioDecoder()
+      if (audioDecoder && audioDecoder.state === 'unconfigured') {
+        try {
+          audioDecoder.configure({ codec: 'opus', description: opusHead })
+        } catch (e) {
+          console.error('AudioDecoder configure failed', e)
+        }
+      }
+      return
+    }
+    if (!audioDecoder || audioDecoder.state !== 'configured') return
+    audioDecoder.decode(new EncodedAudioChunk({
+      type: 'delta',
+      timestamp: performance.now() * 1000,
+      data: payload,
+    }))
+  }
+
+  function closeAudio() {
+    if (audioDecoder) {
+      try {
+        audioDecoder.close()
+      } catch {
+        // already closed
+      }
+      audioDecoder = null
+    }
+    audioCtx?.close().catch(() => {})
+    audioCtx = null
+    opusHead = null
+  }
 
   function setupDecoder() {
     decoder?.close()
@@ -112,8 +207,12 @@ export function useStream(
 
   function handleBinary(buf: ArrayBuffer) {
     const u8 = new Uint8Array(buf)
-    if (u8.length < 2 || u8[0] !== 0x01) return
-    handleFrame(u8[1], u8.slice(2))
+    if (u8.length < 2) return
+    if (u8[0] === 0x01) {
+      handleFrame(u8[1], u8.slice(2))
+    } else if (u8[0] === 0x02) {
+      handleAudioFrame(u8[1], u8.slice(2))
+    }
   }
 
   return {
@@ -163,6 +262,7 @@ export function useStream(
           connected.value = false
           decoder?.close()
           decoder = null
+          closeAudio()
         }
       })
     },
@@ -170,6 +270,7 @@ export function useStream(
       ws?.close()
       decoder?.close()
       decoder = null
+      closeAudio()
     },
     send(msg) {
       if (ws && ws.readyState === WebSocket.OPEN) {

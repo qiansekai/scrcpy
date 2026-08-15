@@ -102,6 +102,9 @@ func (r *recordingBroadcaster) PublishFrame(id string, f *VideoFrame) {
 	r.devices = append(r.devices, id)
 	r.frames = append(r.frames, f)
 }
+func (r *recordingBroadcaster) PublishAudioFrame(id string, f *AudioFrame) {
+	// 测试聚焦视频/设备消息，音频帧直接忽略。
+}
 func (r *recordingBroadcaster) PublishDeviceMessage(id string, m *control.DeviceMessage) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

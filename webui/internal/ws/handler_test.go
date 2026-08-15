@@ -18,6 +18,7 @@ type noopBroadcaster struct{}
 
 func (noopBroadcaster) PublishSession(string, device.SessionInfo)          {}
 func (noopBroadcaster) PublishFrame(string, *device.VideoFrame)            {}
+func (noopBroadcaster) PublishAudioFrame(string, *device.AudioFrame)       {}
 func (noopBroadcaster) PublishDeviceMessage(string, *control.DeviceMessage) {}
 
 func TestHandlerOriginAllowList(t *testing.T) {

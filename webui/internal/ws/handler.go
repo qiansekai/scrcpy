@@ -99,13 +99,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Write goroutine: hub pushes -> browser. Video frames are prefixed 0x01
-	// and go out as binary; JSON session/clipboard messages go out as text.
+	// Write goroutine: hub pushes -> browser. Video (0x01) and audio (0x02)
+	// frames go out as binary; JSON session/clipboard messages go out as text.
 	go func() {
 		for b := range cw.ws {
 			writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			typ := websocket.MessageBinary
-			if b[0] != 0x01 {
+			if b[0] != 0x01 && b[0] != 0x02 {
 				typ = websocket.MessageText
 			}
 			err := c.Write(writeCtx, typ, b)
