@@ -1,7 +1,8 @@
-import { ref, type Ref } from 'vue'
+import { reactive, ref, type Ref } from 'vue'
 
 export interface StreamHandle {
   connected: Ref<boolean>
+  dims: { width: number; height: number }
   connect: () => Promise<void>
   disconnect: () => void
   send: (msg: Record<string, unknown>) => void
@@ -16,6 +17,7 @@ export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHa
   let firstKeySeen = false
   const ctx = canvas.getContext('2d')
   const connected = ref(false)
+  const dims = reactive({ width: 0, height: 0 })
 
   function setupDecoder() {
     decoder?.close()
@@ -76,6 +78,7 @@ export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHa
 
   return {
     connected,
+    dims,
     async connect() {
       setupDecoder()
       connected.value = false
@@ -99,6 +102,8 @@ export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHa
                 height = m.height
                 canvas.width = width
                 canvas.height = height
+                dims.width = width
+                dims.height = height
               }
             } catch (e) {
               console.error('WS 消息解析失败', e)
