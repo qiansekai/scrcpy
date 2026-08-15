@@ -1,0 +1,6 @@
+webui/web/node_modules/
+webui/web/dist/
+webui/webui.exe
+webui/devices.json
+webui/server.out.log
+webui/server.err.log

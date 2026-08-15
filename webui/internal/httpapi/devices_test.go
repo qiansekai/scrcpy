@@ -188,3 +188,38 @@ func TestStaticFallbackWhenNoDist(t *testing.T) {
 		t.Fatalf("fallback = %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestSpaHandlerFallsBackToIndex(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>ok</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app.js"), []byte("js"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := spaHandler{dist: dir}
+
+	// 客户端路由直达 → 回退 index.html
+	req := httptest.NewRequest("GET", "/devices/192-168-1-18", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<html>") {
+		t.Fatalf("spa route = %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 存在的静态文件直接返回
+	req = httptest.NewRequest("GET", "/app.js", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || rec.Body.String() != "js" {
+		t.Fatalf("static = %d %s", rec.Code, rec.Body.String())
+	}
+
+	// API 路径不透传 index.html
+	req = httptest.NewRequest("GET", "/api/whatever", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 404 {
+		t.Fatalf("api = %d", rec.Code)
+	}
+}
