@@ -2,13 +2,14 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useControl } from '../composables/useControl'
 import { useKeyboard } from '../composables/useKeyboard'
-import { useStream } from '../composables/useStream'
+import { setAudioBufMs, useStream } from '../composables/useStream'
 
 const props = defineProps<{ device: { id: string; ip: string; name?: string } }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 const stream = ref<ReturnType<typeof useStream> | null>(null)
 const control = ref<ReturnType<typeof useControl> | null>(null)
 const keyboard = ref<ReturnType<typeof useKeyboard> | null>(null)
+const bufMs = ref<number>(Number(localStorage.getItem('audioBufMs') || 60))
 
 onMounted(() => {
   if (!canvas.value) return
@@ -29,6 +30,12 @@ onBeforeUnmount(() => {
 
 function shortcut(type: string) {
   stream.value?.send({ type })
+}
+
+function onBuf(v: number | null) {
+  if (v == null) return
+  bufMs.value = v
+  setAudioBufMs(v) // 实时生效并持久化
 }
 </script>
 
@@ -51,6 +58,19 @@ function shortcut(type: string) {
         <v-btn size="x-small" @click="shortcut('recents')">RECENTS</v-btn>
         <v-btn size="x-small" @click="shortcut('power')">电源</v-btn>
         <v-btn size="x-small" @click="shortcut('rotate')">旋转</v-btn>
+      </div>
+      <div class="d-flex align-center ga-2 mt-1">
+        <v-slider
+          v-model="bufMs"
+          :min="10"
+          :max="300"
+          :step="10"
+          density="compact"
+          hide-details
+          class="flex-grow-1"
+          @update:model-value="onBuf"
+        />
+        <span class="text-caption text-medium-emphasis text-no-wrap">缓冲 {{ bufMs }}ms</span>
       </div>
     </v-card-text>
   </v-card>

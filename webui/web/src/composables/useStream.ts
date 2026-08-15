@@ -1,5 +1,23 @@
 import { reactive, ref, type Ref } from 'vue'
 
+// 音频缓冲（毫秒）：延迟 vs 平滑的权衡，可由预览区滑块实时调整并持久化。
+let audioBufMs = 60
+try {
+  const v = Number(localStorage.getItem('audioBufMs'))
+  if (v > 0) audioBufMs = v
+} catch {
+  // ignore
+}
+
+export function setAudioBufMs(ms: number) {
+  audioBufMs = ms
+  try {
+    localStorage.setItem('audioBufMs', String(ms))
+  } catch {
+    // ignore
+  }
+}
+
 export interface StreamHandle {
   connected: Ref<boolean>
   dims: { width: number; height: number }
@@ -83,14 +101,15 @@ export function useStream(
     const src = actx.createBufferSource()
     src.buffer = buf
     src.connect(actx.destination)
+    const bufSec = audioBufMs / 1000
     if (!audioStarted) {
-      playWhen = actx.currentTime + 0.03
+      playWhen = actx.currentTime + bufSec
       audioStarted = true
     } else {
       if (playWhen < actx.currentTime - 0.02) {
         playWhen = actx.currentTime + 0.02 // 落后太多，追上
-      } else if (playWhen > actx.currentTime + 0.08) {
-        playWhen = actx.currentTime + 0.03 // 超前累积，拉回
+      } else if (playWhen > actx.currentTime + bufSec * 2) {
+        playWhen = actx.currentTime + bufSec // 超前累积，拉回
       }
     }
     src.start(playWhen)
