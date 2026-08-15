@@ -128,6 +128,11 @@ export function useStream(deviceId: string, canvas: HTMLCanvasElement): StreamHa
                 canvas.height = height
                 dims.width = width
                 dims.height = height
+                // 新会话 = 新流（重连/旋转换分辨率）：重建解码器并清掉旧参数，
+                // 否则旧 SPS/PPS 与首帧 IDR 不匹配，旋转后会花屏。
+                setupDecoder()
+                codecString = null
+                configData = null
               }
             } catch (e) {
               console.error('WS 消息解析失败', e)

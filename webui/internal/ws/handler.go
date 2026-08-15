@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -31,10 +32,33 @@ type Handler struct {
 	hub     *Hub
 	manager *device.Manager
 	ctrl    *control.Writer
+	origins []string
 }
 
 func NewHandler(hub *Hub, manager *device.Manager) *Handler {
-	return &Handler{hub: hub, manager: manager, ctrl: &control.Writer{}}
+	return &Handler{hub: hub, manager: manager, ctrl: &control.Writer{}, origins: defaultOriginPatterns()}
+}
+
+// defaultOriginPatterns 允许 localhost/回环 + 本机所有 LAN IPv4 地址，
+// 使同网段浏览器经 http://<LAN-ip>:8080 访问时 WS 握手不被 origin 校验拒绝。
+func defaultOriginPatterns() []string {
+	patterns := []string{"localhost:*", "127.0.0.1:*"}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return patterns
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipnet.IP
+		if ip.IsLoopback() || ip.To4() == nil {
+			continue
+		}
+		patterns = append(patterns, ip.String()+":*")
+	}
+	return patterns
 }
 
 type connWrapper struct {
@@ -59,12 +83,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
 	}
-	// localhost:* allows the Vite dev proxy (localhost:5173 / 127.0.0.1:5173)
-	// and same-host origins without opening the socket to any page. A browser
-	// on another machine connects same-origin (always allowed); only a
-	// cross-origin page would need that host's pattern added here.
+	// Origin 白名单：仅允许本机回环 + 本机 LAN 地址发起的连接，挡住跨站页面对
+	// WS 的 CSRF 注入。REST 无此限制，远程访问仅影响 WS。
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"localhost:*", "127.0.0.1:*"},
+		OriginPatterns: h.origins,
 	})
 	if err != nil {
 		return

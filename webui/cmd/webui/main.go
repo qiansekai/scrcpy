@@ -24,6 +24,10 @@ func main() {
 
 	hub := ws.NewHub()
 	mgr := device.NewManager(hub)
+	// 重启后把已持久化的设备重新拉起会话，避免全部停在离线态。
+	for _, d := range cfg.Devices {
+		mgr.Add(device.SessionConfig{ID: d.ID, IP: d.IP})
+	}
 	apiHandler := httpapi.New(cfg, mgr, *configPath)
 	wsHandler := ws.NewHandler(hub, mgr)
 

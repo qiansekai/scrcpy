@@ -169,3 +169,76 @@ func TestSubscribeReplaysCachedConfig(t *testing.T) {
 		t.Fatalf("live frame = %x, want it after replay", b)
 	}
 }
+
+// TestSubscribeReplaysKeyframe: a late subscriber must receive the cached
+// session → config → keyframe preamble (in that order) so it can decode
+// immediately instead of waiting for the device's next keyframe.
+func TestSubscribeReplaysKeyframe(t *testing.T) {
+	h := NewHub()
+	live := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", live)
+
+	h.PublishSession("dev1", device.SessionInfo{Width: 1080, Height: 2400})
+	h.PublishFrame("dev1", &device.VideoFrame{Config: true, Data: []byte{0x67}})
+	h.PublishFrame("dev1", &device.VideoFrame{KeyFrame: true, Data: []byte{0x65}})
+	for len(live.out) > 0 {
+		<-live.out
+	}
+
+	late := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", late)
+
+	want := [][]byte{
+		[]byte(`{"type":"session","width":1080,"height":2400,"codec":"h264"}`),
+		{0x01, 0x01, 0x67},
+		{0x01, 0x02, 0x65},
+	}
+	for i, w := range want {
+		select {
+		case b := <-late.out:
+			if string(b) != string(w) {
+				t.Fatalf("replay[%d] = %x, want %x", i, b, w)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("late conn missing replay[%d]", i)
+		}
+	}
+}
+
+// TestNewSessionClearsStaleCache: a new session (reconnect/rotation) must clear
+// the previous stream's cached config/keyframe so a late subscriber never gets
+// stale parameter sets paired with the new session.
+func TestNewSessionClearsStaleCache(t *testing.T) {
+	h := NewHub()
+	live := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", live)
+
+	h.PublishSession("dev1", device.SessionInfo{Width: 1080, Height: 2400})
+	h.PublishFrame("dev1", &device.VideoFrame{Config: true, Data: []byte{0x67}})
+	h.PublishFrame("dev1", &device.VideoFrame{KeyFrame: true, Data: []byte{0x65}})
+	for len(live.out) > 0 {
+		<-live.out
+	}
+
+	h.PublishSession("dev1", device.SessionInfo{Width: 720, Height: 1600})
+	for len(live.out) > 0 {
+		<-live.out
+	}
+
+	late := &fakeConn{out: make(chan []byte, 16)}
+	h.subscribe("dev1", late)
+
+	select {
+	case b := <-late.out:
+		if got := string(b); got != `{"type":"session","width":720,"height":1600,"codec":"h264"}` {
+			t.Fatalf("replayed = %s", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no replayed session")
+	}
+	select {
+	case b := <-late.out:
+		t.Fatalf("stale frame leaked after new session: %x", b)
+	default:
+	}
+}
