@@ -9,11 +9,18 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 
 public final class DesktopConnection implements Closeable {
 
     private static final int DEVICE_NAME_FIELD_LENGTH = 64;
+
+    // Accept timeout so the resident server does not block forever when a
+    // client does not connect a stream (e.g. --no-audio/--no-control) or
+    // silently disappears. A SocketTimeoutException on the video accept is
+    // propagated so the session ends and the daemon restarts the server.
+    private static final int ACCEPT_TIMEOUT_MS = 5000;
 
     private final Socket videoSocket;
     private final Socket audioSocket;
@@ -24,6 +31,10 @@ public final class DesktopConnection implements Closeable {
         this.videoSocket = videoSocket;
         this.audioSocket = audioSocket;
         this.controlSocket = controlSocket;
+        if (controlSocket != null) {
+            // device->PC control messages must not be delayed by Nagle
+            controlSocket.setTcpNoDelay(true);
+        }
         controlChannel = controlSocket != null ? new ControlChannel(controlSocket) : null;
     }
 
@@ -39,8 +50,11 @@ public final class DesktopConnection implements Closeable {
         try {
             if (tunnelForward) {
                 try (ServerSocket serverSocket = new ServerSocket(tunnelPort, 0, InetAddress.getByName("0.0.0.0"))) {
+                    serverSocket.setReuseAddress(true); // prevent EADDRINUSE on fast restart due to TIME_WAIT
+                    serverSocket.setSoTimeout(ACCEPT_TIMEOUT_MS);
                     if (video) {
                         videoSocket = serverSocket.accept();
+                        videoSocket.setKeepAlive(true); // prevent permanent block on silent network loss
                         if (sendDummyByte) {
                             // send one byte so the client may read() to detect a connection error
                             videoSocket.getOutputStream().write(0);
@@ -48,19 +62,29 @@ public final class DesktopConnection implements Closeable {
                         }
                     }
                     if (audio) {
-                        audioSocket = serverSocket.accept();
-                        if (sendDummyByte) {
-                            // send one byte so the client may read() to detect a connection error
-                            audioSocket.getOutputStream().write(0);
-                            sendDummyByte = false;
+                        try {
+                            audioSocket = serverSocket.accept();
+                            audioSocket.setKeepAlive(true);
+                            if (sendDummyByte) {
+                                // send one byte so the client may read() to detect a connection error
+                                audioSocket.getOutputStream().write(0);
+                                sendDummyByte = false;
+                            }
+                        } catch (SocketTimeoutException e) {
+                            audioSocket = null; // client did not connect audio, skip
                         }
                     }
                     if (control) {
-                        controlSocket = serverSocket.accept();
-                        if (sendDummyByte) {
-                            // send one byte so the client may read() to detect a connection error
-                            controlSocket.getOutputStream().write(0);
-                            sendDummyByte = false;
+                        try {
+                            controlSocket = serverSocket.accept();
+                            controlSocket.setKeepAlive(true);
+                            if (sendDummyByte) {
+                                // send one byte so the client may read() to detect a connection error
+                                controlSocket.getOutputStream().write(0);
+                                sendDummyByte = false;
+                            }
+                        } catch (SocketTimeoutException e) {
+                            controlSocket = null; // client did not connect control, skip
                         }
                     }
                 }

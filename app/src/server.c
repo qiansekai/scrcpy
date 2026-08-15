@@ -958,6 +958,16 @@ run_server(void *data) {
         // The scrcpy server is expected to already be running on the device,
         // listening on --tunnel-host:--tunnel-port. Connect directly, without
         // adb.
+        if (params->max_size || params->video_bit_rate || params->max_fps
+                || params->video_codec != SC_CODEC_H264 || params->audio_codec != SC_CODEC_OPUS
+                || params->crop || params->video_encoder || params->audio_encoder) {
+            LOGW("--no-adb: server-side options (size/bitrate/fps/codec/crop/encoder) are "
+                 "configured by the device-side script and ignored here.");
+        }
+        if (!params->video || !params->audio || !params->control) {
+            LOGI("--no-adb: the device-side server always enables video+audio+control; "
+                 "disabled streams are simply not connected.");
+        }
         if (!params->tunnel_host) {
             LOGE("--no-adb requires --tunnel-host");
             goto error_connection_failed;

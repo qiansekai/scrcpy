@@ -382,7 +382,11 @@ public class Options {
                     options.tunnelForward = Boolean.parseBoolean(value);
                     break;
                 case "tunnel_port":
-                    options.tunnelPort = Integer.parseInt(value);
+                    int port = Integer.parseInt(value);
+                    if (port <= 0 || port > 0xFFFF) {
+                        throw new IllegalArgumentException("Invalid tunnel_port: " + value);
+                    }
+                    options.tunnelPort = port;
                     break;
                 case "crop":
                     if (!value.isEmpty()) {
