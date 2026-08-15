@@ -11,7 +11,7 @@ export interface StreamHandle {
 export function useStream(
   deviceId: string,
   canvas: HTMLCanvasElement,
-  opts?: { throttle?: number; fixedCanvas?: boolean },
+  opts?: { throttle?: number; fixedCanvas?: boolean; noAudio?: boolean },
 ): StreamHandle {
   let ws: WebSocket | null = null
   let decoder: VideoDecoder | null = null
@@ -33,7 +33,10 @@ export function useStream(
   const dims = reactive({ width: 0, height: 0 })
 
   function ensureAudioCtx() {
-    if (!audioCtx) audioCtx = new AudioContext()
+    if (!audioCtx) {
+      // interactive 模式把 AudioContext 输出缓冲降到 ~20ms，显著降低可听延迟
+      audioCtx = new AudioContext({ latencyHint: 'interactive' })
+    }
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
     return audioCtx
   }
@@ -81,13 +84,13 @@ export function useStream(
     src.buffer = buf
     src.connect(actx.destination)
     if (!audioStarted) {
-      playWhen = actx.currentTime + 0.06
+      playWhen = actx.currentTime + 0.03
       audioStarted = true
     } else {
       if (playWhen < actx.currentTime - 0.02) {
         playWhen = actx.currentTime + 0.02 // 落后太多，追上
-      } else if (playWhen > actx.currentTime + 0.2) {
-        playWhen = actx.currentTime + 0.08 // 超前累积，拉回
+      } else if (playWhen > actx.currentTime + 0.08) {
+        playWhen = actx.currentTime + 0.03 // 超前累积，拉回
       }
     }
     src.start(playWhen)
@@ -113,6 +116,7 @@ export function useStream(
   }
 
   function handleAudioFrame(flags: number, payload: Uint8Array) {
+    if (opts?.noAudio) return // 缩略图不播音频，只有选中预览出声
     const isConfig = (flags & 0x01) !== 0
     if (isConfig) {
       opusConfig = parseOpusHead(payload)

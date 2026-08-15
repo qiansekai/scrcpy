@@ -9,7 +9,7 @@ let stream: ReturnType<typeof useStream> | null = null
 
 onMounted(() => {
   if (!canvas.value) return
-  stream = useStream(props.id, canvas.value, { throttle: 5, fixedCanvas: true })
+  stream = useStream(props.id, canvas.value, { throttle: 5, fixedCanvas: true, noAudio: true })
   stream.connect().catch(() => {})
 })
 
