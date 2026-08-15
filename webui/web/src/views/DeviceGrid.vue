@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { addDevice, listDevices, removeDevice, type Device } from '../api'
 import DeviceThumb from './DeviceThumb.vue'
+import PreviewPanel from './PreviewPanel.vue'
 
 const devices = ref<Device[]>([])
+const selectedId = ref<string | null>(null)
 const dialog = ref(false)
 const ip = ref('')
 const error = ref('')
 let timer: number | null = null
+
+const onlineCount = computed(() => devices.value.filter((d) => d.online).length)
+const selected = computed(() => devices.value.find((d) => d.id === selectedId.value) ?? null)
 
 async function refresh() {
   try {
     devices.value = await listDevices()
   } catch {
     // backend down: keep last list, next poll retries
+  }
+  if (selectedId.value && !devices.value.some((d) => d.id === selectedId.value)) {
+    selectedId.value = null
   }
 }
 
@@ -25,6 +33,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (timer) window.clearInterval(timer)
 })
+
+function toggle(id: string) {
+  selectedId.value = selectedId.value === id ? null : id
+}
 
 async function submit() {
   error.value = ''
@@ -40,6 +52,7 @@ async function submit() {
 
 async function del(dev: Device) {
   await removeDevice(dev.id)
+  if (selectedId.value === dev.id) selectedId.value = null
   await refresh()
 }
 </script>
@@ -51,17 +64,28 @@ async function del(dev: Device) {
         <v-btn color="primary" @click="dialog = true">添加设备</v-btn>
       </v-col>
       <v-col cols="auto" class="text-caption text-medium-emphasis">
-        {{ devices.length }} 台设备
+        {{ devices.length }} 台设备 · {{ onlineCount }} 在线
       </v-col>
     </v-row>
 
-    <v-row dense>
-      <v-col
-        v-for="d in devices"
-        :key="d.id"
-        cols="6" sm="4" md="3" lg="2"
-      >
-        <DeviceThumb :id="d.id" :ip="d.ip" :name="d.name" :online="d.online" @delete="del(d)" />
+    <v-row no-gutters>
+      <v-col :cols="12" :md="selected ? 8 : 12" :lg="selected ? 9 : 12">
+        <div class="thumb-wall">
+          <DeviceThumb
+            v-for="d in devices"
+            :key="d.id"
+            :id="d.id"
+            :ip="d.ip"
+            :name="d.name"
+            :online="d.online"
+            :selected="selectedId === d.id"
+            @select="toggle(d.id)"
+            @delete="del(d)"
+          />
+        </div>
+      </v-col>
+      <v-col v-if="selected" cols="12" md="4" lg="3">
+        <PreviewPanel :device="selected" />
       </v-col>
     </v-row>
 
@@ -81,3 +105,12 @@ async function del(dev: Device) {
     </v-dialog>
   </v-container>
 </template>
+
+<style scoped>
+.thumb-wall {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-content: flex-start;
+}
+</style>
