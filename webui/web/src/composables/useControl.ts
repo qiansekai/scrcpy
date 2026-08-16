@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { type Ref } from 'vue'
 
 // 触控映射：把 canvas 上的指针事件换算成设备像素坐标，经 send() 发给设备。
 // DeviceConsole 与 PreviewPanel 共用。dims 来自 useStream 的 session 消息。
@@ -43,6 +43,11 @@ export function useControl(
     pointerDown = false
     sendTouch(1, e)
   }
+  // 右键返回：挡掉浏览器右键菜单，向设备发 BACK。
+  function onContextMenu(e: MouseEvent) {
+    e.preventDefault()
+    send({ type: 'back' })
+  }
 
   function bind() {
     if (bound) return
@@ -52,6 +57,7 @@ export function useControl(
     el.addEventListener('pointermove', onPointerMove)
     el.addEventListener('pointerup', onPointerUp)
     el.addEventListener('pointercancel', onPointerCancel)
+    el.addEventListener('contextmenu', onContextMenu)
     bound = true
   }
 
@@ -63,6 +69,7 @@ export function useControl(
       el.removeEventListener('pointermove', onPointerMove)
       el.removeEventListener('pointerup', onPointerUp)
       el.removeEventListener('pointercancel', onPointerCancel)
+      el.removeEventListener('contextmenu', onContextMenu)
     }
     bound = false
   }
