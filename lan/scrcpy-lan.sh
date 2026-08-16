@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # scrcpy-lan server launcher (root, app_process)
-# Usage: sh scrcpy-lan.sh [port]
+# Usage: sh scrcpy-lan.sh [port] [audio_mode=output|playback]
 # Uses scrcpy-lan-server.jar (not scrcpy-server.jar) to avoid being clobbered
 # by a stock scrcpy client pushing its own server over the adb path.
 # cleanup=false: the server must not delete its own jar (it stays resident).
