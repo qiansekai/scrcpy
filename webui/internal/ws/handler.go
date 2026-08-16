@@ -18,17 +18,18 @@ import (
 // CtrlMsg is a browser -> Go control message. X/Y are device-pixel coordinates
 // already scaled by the frontend.
 type CtrlMsg struct {
-	Type    string  `json:"type"`
-	X       float64 `json:"x,omitempty"`
-	Y       float64 `json:"y,omitempty"`
-	ScreenW int     `json:"screenW,omitempty"`
-	ScreenH int     `json:"screenH,omitempty"`
-	Action  int     `json:"action,omitempty"`
-	Keycode int     `json:"keycode,omitempty"`
-	Text    string  `json:"text,omitempty"`
-	Clipboard string `json:"clipboard,omitempty"`
-	CopyKey   int    `json:"copyKey,omitempty"`
-	Paste     bool   `json:"paste,omitempty"`
+	Type      string  `json:"type"`
+	X         float64 `json:"x,omitempty"`
+	Y         float64 `json:"y,omitempty"`
+	ScreenW   int     `json:"screenW,omitempty"`
+	ScreenH   int     `json:"screenH,omitempty"`
+	Action    int     `json:"action,omitempty"`
+	Keycode   int     `json:"keycode,omitempty"`
+	Text      string  `json:"text,omitempty"`
+	Clipboard string  `json:"clipboard,omitempty"`
+	CopyKey   int     `json:"copyKey,omitempty"`
+	Paste     bool    `json:"paste,omitempty"`
+	On        bool    `json:"on,omitempty"`
 }
 
 type Handler struct {
@@ -172,6 +173,8 @@ func (h *Handler) route(deviceID string, m CtrlMsg) {
 		b = h.ctrl.InjectKey(control.Key{Action: control.KeyActionDown, Keycode: 26})
 	case "rotate":
 		b = h.ctrl.RotateDevice()
+	case "audioDup":
+		b = h.ctrl.AudioDup(m.On)
 	default:
 		log.Printf("unknown control msg type %q", m.Type)
 		return

@@ -10,6 +10,7 @@ const stream = ref<ReturnType<typeof useStream> | null>(null)
 const control = ref<ReturnType<typeof useControl> | null>(null)
 const keyboard = ref<ReturnType<typeof useKeyboard> | null>(null)
 const bufMs = ref<number>(Number(localStorage.getItem('audioBufMs') || 60))
+const deviceDup = ref(false)
 
 onMounted(() => {
   if (!canvas.value) return
@@ -39,6 +40,11 @@ function onBuf(v: number | null) {
   bufMs.value = v
   setAudioBufMs(v) // 实时生效并持久化
 }
+
+function onDup(v: boolean | null) {
+  if (v == null) return
+  stream.value?.send({ type: 'audioDup', on: v })
+}
 </script>
 
 <template>
@@ -60,6 +66,9 @@ function onBuf(v: number | null) {
         <v-btn size="x-small" @click="shortcut('recents')">RECENTS</v-btn>
         <v-btn size="x-small" @click="shortcut('power')">电源</v-btn>
         <v-btn size="x-small" @click="shortcut('rotate')">旋转</v-btn>
+      </div>
+      <div class="d-flex align-center ga-2 mt-1">
+        <v-switch v-model="deviceDup" label="手机出声" density="compact" hide-details @update:model-value="onDup" />
       </div>
       <div class="d-flex align-center ga-2 mt-1">
         <v-slider

@@ -4,6 +4,7 @@ import com.genymobile.scrcpy.AndroidVersions;
 import com.genymobile.scrcpy.AsyncProcessor;
 import com.genymobile.scrcpy.CleanUp;
 import com.genymobile.scrcpy.Options;
+import com.genymobile.scrcpy.audio.AudioCapture;
 import com.genymobile.scrcpy.device.Device;
 import com.genymobile.scrcpy.display.DisplayInfo;
 import com.genymobile.scrcpy.model.DeviceApp;
@@ -111,6 +112,13 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
 
     // Used for resetting video encoding on RESET_VIDEO message or for sending camera controls
     private SurfaceCapture surfaceCapture;
+
+    // Used for dynamically toggling device audio output (TYPE_AUDIO_DUP)
+    private AudioCapture audioCapture;
+
+    public void setAudioCapture(AudioCapture audioCapture) {
+        this.audioCapture = audioCapture;
+    }
 
     public Controller(ControlChannel controlChannel, CleanUp cleanUp, Options options) {
         this.camera = options.getVideoSource() == VideoSource.CAMERA;
@@ -415,6 +423,9 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
                     return true;
                 case ControlMessage.TYPE_SCAN_FILE:
                     scanFile(msg.getText());
+                    return true;
+                case ControlMessage.TYPE_AUDIO_DUP:
+                    setAudioDup(msg.getOn());
                     return true;
                 default:
                     // fall through
@@ -888,6 +899,13 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
             Device.sendBroadcast(intent);
         } catch (Throwable t) {
             Ln.e("MediaStore scan failed for " + path, t);
+        }
+    }
+
+    private void setAudioDup(boolean on) {
+        if (audioCapture != null) {
+            Ln.i("Device audio output " + (on ? "enabled" : "disabled"));
+            audioCapture.setKeepPlayingOnDevice(on);
         }
     }
 }

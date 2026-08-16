@@ -242,7 +242,8 @@ export function useStream(
     if (!decoder || decoder.state === 'closed') setupDecoder()
     if (decoder && decoder.state === 'unconfigured' && codecString) {
       // 不传 description：负载是 AnnexB，传了会让 Chrome 期待 AVCC 长度前缀而报错。
-      decoder.configure({ codec: codecString, optimizeForLatency: true, avc: { format: 'annexb' } })
+      // avc 是 WebCodecs 实验属性，TS 的 VideoDecoderConfig 未收录，需断言。
+      decoder.configure({ codec: codecString, optimizeForLatency: true, avc: { format: 'annexb' } } as VideoDecoderConfig)
     }
     if (!decoder || decoder.state !== 'configured') return
     if (isConfig) return // 参数集帧无画面，跳过；SPS/PPS 会前置到首个 IDR

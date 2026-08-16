@@ -13,6 +13,7 @@ const (
 	TypeGetClipboard       = 8
 	TypeSetClipboard       = 9
 	TypeRotateDevice       = 11
+	TypeAudioDup           = 22
 )
 
 const (
@@ -106,5 +107,16 @@ func (w *Writer) SetClipboard(text string, paste bool, sequence uint64) []byte {
 	}
 	binary.BigEndian.PutUint32(b[10:], uint32(len(data)))
 	copy(b[14:], data)
+	return b
+}
+
+// AudioDup serializes TYPE_AUDIO_DUP (2 bytes). on=true keeps audio playing on
+// the device (dual playback) instead of muting the device output.
+func (w *Writer) AudioDup(on bool) []byte {
+	b := make([]byte, 2)
+	b[0] = TypeAudioDup
+	if on {
+		b[1] = 1
+	}
 	return b
 }

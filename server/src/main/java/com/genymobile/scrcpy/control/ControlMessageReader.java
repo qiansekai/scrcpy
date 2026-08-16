@@ -64,6 +64,8 @@ public class ControlMessageReader {
                 return parseResizeDisplay();
             case ControlMessage.TYPE_SCAN_FILE:
                 return parseScanFile();
+            case ControlMessage.TYPE_AUDIO_DUP:
+                return parseAudioDup();
             default:
                 throw new ControlProtocolException("Unknown event type: " + type);
         }
@@ -188,6 +190,11 @@ public class ControlMessageReader {
     private ControlMessage parseScanFile() throws IOException {
         String path = parseString();
         return ControlMessage.createScanFile(path);
+    }
+
+    private ControlMessage parseAudioDup() throws IOException {
+        boolean on = dis.readBoolean();
+        return ControlMessage.createAudioDup(on);
     }
 
     private Position parsePosition() throws IOException {

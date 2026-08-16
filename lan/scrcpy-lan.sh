@@ -8,7 +8,9 @@ PORT="${1:-27183}"
 AUDIO_MODE="${2:-output}"
 AUDIO_ARGS=""
 if [ "$AUDIO_MODE" = "playback" ]; then
-    AUDIO_ARGS="audio_source=playback audio_dup=true"
+    # playback 源：全局捕获（MEDIA/GAME/UNKNOWN），设备默认静音；
+    # 设备出声由客户端控制消息 audioDup 动态开启。
+    AUDIO_ARGS="audio_source=playback"
 fi
 CLASSPATH=/data/local/tmp/scrcpy-lan-server.jar \
   app_process / com.genymobile.scrcpy.Server \

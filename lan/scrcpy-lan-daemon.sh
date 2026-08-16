@@ -21,7 +21,9 @@ ADMIN_LOG=/data/local/tmp/scrcpy-lan-admin.log
 
 AUDIO_ARGS=""
 if [ "$AUDIO_MODE" = "playback" ]; then
-    AUDIO_ARGS="audio_source=playback audio_dup=true"
+    # playback 源：全局捕获（MEDIA/GAME/UNKNOWN），设备默认静音；
+    # 设备出声由客户端控制消息 audioDup 动态开启。
+    AUDIO_ARGS="audio_source=playback"
 fi
 
 # guard <ps-match> <log> <app_process args...>

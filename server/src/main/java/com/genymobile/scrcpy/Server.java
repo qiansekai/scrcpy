@@ -134,6 +134,9 @@ public final class Server {
                     audioRecorder = new AudioEncoder(audioCapture, audioStreamer, options);
                 }
                 asyncProcessors.add(audioRecorder);
+                if (controller != null) {
+                    controller.setAudioCapture(audioCapture);
+                }
             }
 
             if (video) {
