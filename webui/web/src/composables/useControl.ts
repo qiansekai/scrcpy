@@ -28,6 +28,7 @@ export function useControl(
   }
 
   function onPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return // 右键走 contextmenu → BACK，不进触控
     pointerDown = true
     canvas.value?.setPointerCapture(e.pointerId)
     sendTouch(0, e)
@@ -36,6 +37,7 @@ export function useControl(
     if (pointerDown) sendTouch(2, e)
   }
   function onPointerUp(e: PointerEvent) {
+    if (e.button !== 0) return
     pointerDown = false
     sendTouch(1, e)
   }
