@@ -37,12 +37,37 @@ func (a *api) handleDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) handleDevice(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/api/devices/")
+	if strings.HasSuffix(rest, "/exec") {
+		a.exec(w, r, strings.TrimSuffix(rest, "/exec"))
+		return
+	}
 	if r.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/api/devices/")
-	a.remove(w, id)
+	a.remove(w, rest)
+}
+
+// exec runs one shell command on the device via the admin channel (27184).
+func (a *api) exec(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Cmd string `json:"cmd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Cmd == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	res, err := a.mgr.ExecCommand(id, req.Cmd)
+	if err != nil {
+		http.Error(w, "admin error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"exitCode": res.ExitCode, "stdout": res.Stdout, "stderr": res.Stderr})
 }
 
 func (a *api) list(w http.ResponseWriter) {

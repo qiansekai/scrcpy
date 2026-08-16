@@ -46,10 +46,11 @@ public final class BuildConfig {
 EOF
 
 echo "Generating java from aidl..."
-cd "$SERVER_DIR/src/main/aidl"
-"$BUILD_TOOLS_DIR/aidl" -o"$GEN_DIR" -I. \
+AIDL_DIR="$SERVER_DIR/src/main/aidl"
+cd "$AIDL_DIR"
+"$BUILD_TOOLS_DIR/aidl" -o"$GEN_DIR" -I"$AIDL_DIR" \
     android/content/IOnPrimaryClipChangedListener.aidl
-"$BUILD_TOOLS_DIR/aidl" -o"$GEN_DIR" -I. -p "$ANDROID_AIDL" \
+"$BUILD_TOOLS_DIR/aidl" -o"$GEN_DIR" -I"$AIDL_DIR" -p "$ANDROID_AIDL" \
     android/view/IDisplayWindowListener.aidl
 
 # Fake sources to expose hidden Android types to the project
