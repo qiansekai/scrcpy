@@ -13,7 +13,9 @@ const bufMs = ref<number>(Number(localStorage.getItem('audioBufMs') || 60))
 
 onMounted(() => {
   if (!canvas.value) return
-  const s = useStream(props.device.id, canvas.value) // 全分辨率，无节流
+  const s = useStream(props.device.id, canvas.value, {
+    onClipboard: (text) => navigator.clipboard.writeText(text).catch(() => {}),
+  }) // 全分辨率，无节流
   stream.value = s
   control.value = useControl((m) => s.send(m), canvas, s.dims)
   keyboard.value = useKeyboard((m) => s.send(m))

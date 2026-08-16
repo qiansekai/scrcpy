@@ -47,6 +47,24 @@ func TestInjectText(t *testing.T) {
 	}
 }
 
+func TestGetClipboard(t *testing.T) {
+	w := &Writer{}
+	got := w.GetClipboard(1) // COPY
+	want := []byte{TypeGetClipboard, 1}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("getClipboard = %x, want %x", got, want)
+	}
+}
+
+func TestSetClipboard(t *testing.T) {
+	w := &Writer{}
+	got := w.SetClipboard("hi", true, 0)
+	want := append([]byte{TypeSetClipboard, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2}, 'h', 'i')
+	if !bytes.Equal(got, want) {
+		t.Fatalf("setClipboard = %x, want %x", got, want)
+	}
+}
+
 func TestEmptyMessages(t *testing.T) {
 	w := &Writer{}
 	if got := w.RotateDevice(); !bytes.Equal(got, []byte{TypeRotateDevice}) {

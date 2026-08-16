@@ -29,7 +29,7 @@ export interface StreamHandle {
 export function useStream(
   deviceId: string,
   canvas: HTMLCanvasElement,
-  opts?: { throttle?: number; fixedCanvas?: boolean; noAudio?: boolean },
+  opts?: { throttle?: number; fixedCanvas?: boolean; noAudio?: boolean; onClipboard?: (text: string) => void },
 ): StreamHandle {
   let ws: WebSocket | null = null
   let decoder: VideoDecoder | null = null
@@ -315,6 +315,8 @@ export function useStream(
                 setupDecoder()
                 codecString = null
                 configData = null
+              } else if (m.type === 'clipboard') {
+                opts?.onClipboard?.(m.text ?? '')
               }
             } catch (e) {
               console.error('WS 消息解析失败', e)

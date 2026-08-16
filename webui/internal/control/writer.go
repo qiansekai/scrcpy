@@ -10,6 +10,8 @@ const (
 	TypeExpandNotification = 5
 	TypeExpandSettings     = 6
 	TypeCollapsePanels     = 7
+	TypeGetClipboard       = 8
+	TypeSetClipboard       = 9
 	TypeRotateDevice       = 11
 )
 
@@ -86,3 +88,23 @@ func (w *Writer) ExpandNotificationPanel() []byte { return []byte{TypeExpandNoti
 func (w *Writer) ExpandSettingsPanel() []byte     { return []byte{TypeExpandSettings} }
 func (w *Writer) CollapsePanels() []byte          { return []byte{TypeCollapsePanels} }
 func (w *Writer) RotateDevice() []byte            { return []byte{TypeRotateDevice} }
+
+// GetClipboard serializes TYPE_GET_CLIPBOARD. copyKey: 0=none, 1=COPY, 2=CUT.
+func (w *Writer) GetClipboard(copyKey byte) []byte {
+	return []byte{TypeGetClipboard, copyKey}
+}
+
+// SetClipboard serializes TYPE_SET_CLIPBOARD. sequence=0 asks the device not to
+// acknowledge; paste=true makes the device press PASTE after setting.
+func (w *Writer) SetClipboard(text string, paste bool, sequence uint64) []byte {
+	data := []byte(text)
+	b := make([]byte, 1+8+1+4+len(data))
+	b[0] = TypeSetClipboard
+	binary.BigEndian.PutUint64(b[1:], sequence)
+	if paste {
+		b[9] = 1
+	}
+	binary.BigEndian.PutUint32(b[10:], uint32(len(data)))
+	copy(b[14:], data)
+	return b
+}

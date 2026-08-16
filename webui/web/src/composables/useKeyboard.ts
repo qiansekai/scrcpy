@@ -34,10 +34,39 @@ export function useKeyboard(send: (msg: Record<string, unknown>) => void) {
     send({ type: 'key', action, keycode: code })
   }
 
+  // 剪贴板快捷键：Ctrl+C 拉设备剪贴板，Ctrl+V / Ctrl+Shift+V 推 PC 剪贴板。
+  // 命中时不走 key 注入，且 keyup 也要拦掉避免发无配对的 UP。
+  function isClipboardShortcut(e: KeyboardEvent): boolean {
+    if (!e.ctrlKey) return false
+    const t = e.target as HTMLElement | null
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return false
+    return e.code === 'KeyC' || e.code === 'KeyV'
+  }
+
+  function handleClipboard(e: KeyboardEvent) {
+    e.preventDefault()
+    if (e.code === 'KeyC' && !e.shiftKey) {
+      // copyKey=1 (COPY)：让设备先执行复制，靠 autosync 把剪贴板推回来。
+      send({ type: 'getClipboard', copyKey: 1 })
+    } else if (e.code === 'KeyV') {
+      navigator.clipboard.readText()
+        .then((text) => { if (text) send({ type: 'setClipboard', clipboard: text, paste: true }) })
+        .catch(() => {})
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent) {
+    if (isClipboardShortcut(e)) {
+      handleClipboard(e)
+      return
+    }
     sendKey(0, e)
   }
   function onKeyUp(e: KeyboardEvent) {
+    if (isClipboardShortcut(e)) {
+      e.preventDefault()
+      return
+    }
     sendKey(1, e)
   }
 

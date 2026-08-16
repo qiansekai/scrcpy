@@ -26,6 +26,9 @@ type CtrlMsg struct {
 	Action  int     `json:"action,omitempty"`
 	Keycode int     `json:"keycode,omitempty"`
 	Text    string  `json:"text,omitempty"`
+	Clipboard string `json:"clipboard,omitempty"`
+	CopyKey   int    `json:"copyKey,omitempty"`
+	Paste     bool   `json:"paste,omitempty"`
 }
 
 type Handler struct {
@@ -150,6 +153,10 @@ func (h *Handler) route(deviceID string, m CtrlMsg) {
 		b = h.ctrl.InjectKey(control.Key{Action: m.Action, Keycode: int32(m.Keycode)})
 	case "text":
 		b = h.ctrl.InjectText(m.Text)
+	case "getClipboard":
+		b = h.ctrl.GetClipboard(byte(m.CopyKey))
+	case "setClipboard":
+		b = h.ctrl.SetClipboard(m.Clipboard, m.Paste, 0)
 	case "home":
 		// KEYCODE_HOME = 3
 		b = append(h.ctrl.InjectKey(control.Key{Action: control.KeyActionDown, Keycode: 3}),
