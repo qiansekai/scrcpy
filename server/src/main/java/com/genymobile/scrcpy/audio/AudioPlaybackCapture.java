@@ -19,7 +19,10 @@ import java.nio.ByteBuffer;
 
 public final class AudioPlaybackCapture implements AudioCapture {
 
-    private final boolean keepPlayingOnDevice;
+    private boolean keepPlayingOnDevice;
+    private Object audioPolicy;
+    private boolean pendingReconfig;
+    private boolean pendingKeepPlaying;
 
     private AudioRecord recorder;
     private AudioRecordReader reader;
@@ -108,6 +111,7 @@ public final class AudioPlaybackCapture implements AudioCapture {
 
             // AudioPolicy audioPolicy = audioPolicyBuilder.build();
             Object audioPolicy = audioPolicyBuilderClass.getMethod("build").invoke(audioPolicyBuilder);
+            this.audioPolicy = audioPolicy;
 
             // AudioManager.registerAudioPolicyStatic(audioPolicy);
             Method registerAudioPolicyStaticMethod = AudioManager.class.getDeclaredMethod("registerAudioPolicyStatic", audioPolicyClass);
@@ -147,11 +151,66 @@ public final class AudioPlaybackCapture implements AudioCapture {
             // Will call .stop() if necessary, without throwing an IllegalStateException
             recorder.release();
         }
+        unregisterAudioPolicy();
+    }
+
+    @Override
+    public void setKeepPlayingOnDevice(boolean keepPlayingOnDevice) {
+        if (this.keepPlayingOnDevice == keepPlayingOnDevice) {
+            return;
+        }
+        // 重建必须发生在音频读取线程（read），避免与阻塞读并发；这里只记录 pending。
+        this.pendingKeepPlaying = keepPlayingOnDevice;
+        this.pendingReconfig = true;
+    }
+
+    private void reconfigureIfNeeded() {
+        if (!pendingReconfig) {
+            return;
+        }
+        pendingReconfig = false;
+        keepPlayingOnDevice = pendingKeepPlaying;
+        if (recorder == null) {
+            return;
+        }
+        recorder.release();
+        recorder = null;
+        reader = null;
+        unregisterAudioPolicy();
+        try {
+            recorder = createAudioRecord();
+            recorder.startRecording();
+            reader = new AudioRecordReader(recorder);
+        } catch (AudioCaptureException e) {
+            Ln.e("Could not reconfigure audio playback capture", e);
+            recorder = null;
+            reader = null;
+        }
+    }
+
+    private void unregisterAudioPolicy() {
+        if (audioPolicy == null) {
+            return;
+        }
+        try {
+            Class<?> audioPolicyClass = Class.forName("android.media.audiopolicy.AudioPolicy");
+            Method unregisterMethod = AudioManager.class.getMethod("unregisterAudioPolicy", audioPolicyClass);
+            Object audioManager = FakeContext.get().getSystemService(Context.AUDIO_SERVICE);
+            unregisterMethod.invoke(audioManager, audioPolicy);
+        } catch (Exception e) {
+            Ln.w("Could not unregister audio policy", e);
+        }
+        audioPolicy = null;
     }
 
     @Override
     @TargetApi(AndroidVersions.API_24_ANDROID_7_0)
     public int read(ByteBuffer outDirectBuffer, MediaCodec.BufferInfo outBufferInfo) {
+        reconfigureIfNeeded();
+        if (reader == null) {
+            // Audio capture unavailable (e.g. reconfigure failed); report zero to stop the stream.
+            return 0;
+        }
         return reader.read(outDirectBuffer, outBufferInfo);
     }
 }
