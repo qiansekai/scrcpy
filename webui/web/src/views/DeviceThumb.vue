@@ -90,17 +90,18 @@ function select() {
     <span v-else-if="isSlave" class="role-badge slave">被控</span>
     <div class="thumb-body">
       <canvas ref="canvas" width="135" height="240" />
-      <!-- 在线绿点 / 离线灰点 -->
-      <span class="status-dot" :class="online ? 'online' : 'offline'" />
-      <!-- 电量角标 + 充电 -->
-      <span v-if="batteryText" class="battery-badge">
-        {{ batteryText }}<span v-if="status?.plugged" class="plug">⚡</span>
-      </span>
       <div class="thumb-actions">
         <v-btn size="x-small" icon="mdi-delete" variant="tonal" @click.stop="$emit('delete')" />
       </div>
     </div>
-    <div class="thumb-name text-caption text-truncate">{{ name || ip }}</div>
+    <!-- 状态行：在线点 + 名称 + 电量（移出视频叠层，避免与勾选框/徽标打架） -->
+    <div class="thumb-name-row">
+      <span class="status-dot" :class="online ? 'online' : 'offline'" />
+      <span class="thumb-name text-caption text-truncate">{{ name || ip }}</span>
+      <span v-if="batteryText" class="battery-text text-caption">
+        🔋{{ batteryText }}<span v-if="status?.plugged" class="plug">⚡</span>
+      </span>
+    </div>
     <div v-if="status?.model" class="thumb-model text-caption text-medium-emphasis text-truncate">{{ status.model }}</div>
   </div>
 </template>
@@ -165,16 +166,10 @@ function select() {
   display: block;
 }
 .status-dot {
-  position: absolute;
-  /* 放在勾选框（含 40px 触摸区域）下方，避免左上角与 checkbox 重叠 */
-  top: 46px;
-  left: 6px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  pointer-events: none;
-  /* 加一圈白色描边，浅色画面里也能看清 */
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85);
+  flex: none;
 }
 .status-dot.online {
   background: #4caf50;
@@ -182,25 +177,24 @@ function select() {
 .status-dot.offline {
   background: #9e9e9e;
 }
-.battery-badge {
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  font-size: 10px;
-  line-height: 1;
-  padding: 2px 4px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  pointer-events: none;
-}
-.battery-badge .plug {
-  margin-left: 2px;
-  color: #ffd54f;
+.thumb-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  min-width: 0;
 }
 .thumb-name {
-  margin-top: 2px;
-  text-align: center;
+  text-align: left;
+  min-width: 0;
+}
+.battery-text {
+  margin-left: auto;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.6);
+}
+.battery-text .plug {
+  color: #f9a825;
 }
 .thumb-model {
   text-align: center;
@@ -208,9 +202,8 @@ function select() {
 }
 .thumb-actions {
   position: absolute;
-  /* 移到左下角，避免与右上角的主控/被控徽标重叠 */
   bottom: 4px;
-  left: 4px;
+  right: 4px;
   display: flex;
   gap: 4px;
   opacity: 0;

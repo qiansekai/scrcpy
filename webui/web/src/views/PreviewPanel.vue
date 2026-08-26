@@ -92,7 +92,7 @@ function onDup(v: boolean | null) {
       <div class="preview-body">
         <canvas ref="canvas" class="preview-canvas" />
       </div>
-      <div class="preview-side pa-2">
+      <div class="preview-side">
         <div class="d-flex justify-space-between align-center ga-2 mb-1">
           <div class="text-truncate">
             <div class="font-weight-medium text-truncate">{{ device.name || device.ip }}</div>
@@ -124,18 +124,20 @@ function onDup(v: boolean | null) {
         </div>
 
         <!-- A3 文本输入 -->
-        <div class="d-flex ga-2 mt-2">
-          <v-text-field
-            v-model="textInput"
-            label="发送文本"
-            placeholder="发送文本（需设备启用 ADBKeyboard 输入法）"
-            density="compact"
-            variant="outlined"
-            hide-details
-            class="flex-grow-1"
-            @keydown.enter.prevent="sendText"
-          />
-          <v-btn size="small" color="primary" :disabled="!textInput" @click="sendText">发送</v-btn>
+        <div class="mt-2">
+          <div class="d-flex ga-2">
+            <v-text-field
+              v-model="textInput"
+              label="发送文本"
+              density="compact"
+              variant="outlined"
+              hide-details
+              class="flex-grow-1"
+              @keydown.enter.prevent="sendText"
+            />
+            <v-btn size="small" color="primary" :disabled="!textInput" @click="sendText">发送</v-btn>
+          </div>
+          <div class="text-caption text-medium-emphasis mt-1">中文需设备启用 ADBKeyboard 输入法</div>
         </div>
 
         <!-- A4 exec 控制台 -->
@@ -205,5 +207,7 @@ function onDup(v: boolean | null) {
   /* 控件列极端情况下自身滚动，页面本身不滚动 */
   max-height: calc(100vh - 120px);
   overflow-y: auto;
+  /* 左侧留白，避免 v-switch 等控件的内部 input 与视频画布边缘重叠 */
+  padding: 8px 8px 8px 12px;
 }
 </style>

@@ -42,7 +42,6 @@ async function run() {
       <v-text-field
         v-model="cmd"
         label="执行命令"
-        placeholder="如 pm list packages 或 adb 风格命令"
         density="compact"
         hide-details
         variant="outlined"
