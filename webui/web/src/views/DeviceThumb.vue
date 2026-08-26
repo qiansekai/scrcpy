@@ -166,12 +166,15 @@ function select() {
 }
 .status-dot {
   position: absolute;
-  top: 4px;
-  left: 4px;
+  /* 放在勾选框（含 40px 触摸区域）下方，避免左上角与 checkbox 重叠 */
+  top: 46px;
+  left: 6px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   pointer-events: none;
+  /* 加一圈白色描边，浅色画面里也能看清 */
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85);
 }
 .status-dot.online {
   background: #4caf50;
@@ -205,8 +208,9 @@ function select() {
 }
 .thumb-actions {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  /* 移到左下角，避免与右上角的主控/被控徽标重叠 */
+  bottom: 4px;
+  left: 4px;
   display: flex;
   gap: 4px;
   opacity: 0;
