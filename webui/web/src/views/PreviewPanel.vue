@@ -2,9 +2,23 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useControl } from '../composables/useControl'
 import { useKeyboard } from '../composables/useKeyboard'
-import { setAudioBufMs, useStream } from '../composables/useStream'
+import { setAudioBufMs, useStream, type StreamAlert, type StreamStatus } from '../composables/useStream'
+import ExecConsole from './ExecConsole.vue'
+import type { DeviceStatus } from '../api'
 
-const props = defineProps<{ device: { id: string; ip: string; name?: string } }>()
+const props = defineProps<{
+  device: { id: string; ip: string; name?: string }
+  isMaster?: boolean
+  isSlave?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'set-master'): void
+  (e: 'status', s: { battery: number; plugged: boolean; model: string; android: string }): void
+  (e: 'alert', a: StreamAlert): void
+}>()
+
 const canvas = ref<HTMLCanvasElement | null>(null)
 const stream = ref<ReturnType<typeof useStream> | null>(null)
 const control = ref<ReturnType<typeof useControl> | null>(null)
@@ -12,10 +26,23 @@ const keyboard = ref<ReturnType<typeof useKeyboard> | null>(null)
 const bufMs = ref<number>(Number(localStorage.getItem('audioBufMs') || 60))
 const deviceDup = ref(false)
 
+// 文本输入（A3）
+const textInput = ref('')
+// 设备状态（status 广播实时更新）
+const status = ref<DeviceStatus>({ battery: -1, plugged: false, model: '', android: '' })
+
 onMounted(() => {
   if (!canvas.value) return
   const s = useStream(props.device.id, canvas.value, {
     onClipboard: (text) => navigator.clipboard.writeText(text).catch(() => {}),
+    onStatus: (st: StreamStatus) => {
+      if (st.id !== props.device.id) return
+      status.value = { battery: st.battery, plugged: st.plugged, model: st.model, android: st.android }
+      emit('status', { battery: st.battery, plugged: st.plugged, model: st.model, android: st.android })
+    },
+    onAlert: (a: StreamAlert) => {
+      emit('alert', a)
+    },
   }) // 全分辨率，无节流
   stream.value = s
   control.value = useControl((m) => s.send(m), canvas, s.dims)
@@ -33,6 +60,18 @@ onBeforeUnmount(() => {
 
 function shortcut(type: string) {
   stream.value?.send({ type })
+}
+
+// 发送文本：经 WS {type:"text"}，需设备启用 ADBKeyboard 输入法才支持中文
+function sendText() {
+  const t = textInput.value
+  if (!t) return
+  stream.value?.send({ type: 'text', text: t })
+  textInput.value = '' // 发送后清空
+}
+
+function setMaster() {
+  emit('set-master')
 }
 
 function onBuf(v: number | null) {
@@ -58,8 +97,23 @@ function onDup(v: boolean | null) {
           <div class="font-weight-medium text-truncate">{{ device.name || device.ip }}</div>
           <div class="text-caption text-medium-emphasis text-truncate">{{ device.ip }}</div>
         </div>
-        <v-btn size="x-small" variant="tonal" @click="$emit('close')">取消选中</v-btn>
+        <div class="d-flex align-center ga-1">
+          <v-chip v-if="isMaster" size="x-small" color="orange-darken-3">主控</v-chip>
+          <v-chip v-else-if="isSlave" size="x-small" color="purple-darken-3">被控</v-chip>
+          <v-btn size="x-small" variant="tonal" color="warning" @click="setMaster">
+            {{ isMaster ? '取消主控' : '设为主控' }}
+          </v-btn>
+          <v-btn size="x-small" variant="tonal" @click="$emit('close')">取消选中</v-btn>
+        </div>
       </div>
+
+      <!-- 设备状态小字：battery/plugged/model -->
+      <div class="text-caption text-medium-emphasis mb-1">
+        <template v-if="status.battery >= 0">🔋 {{ status.battery }}%<span v-if="status.plugged"> ⚡</span></template>
+        <template v-if="status.model"> · {{ status.model }}</template>
+        <template v-if="status.android"> · Android {{ status.android }}</template>
+      </div>
+
       <div class="d-flex ga-1 flex-wrap">
         <v-btn size="x-small" @click="shortcut('home')">HOME</v-btn>
         <v-btn size="x-small" @click="shortcut('back')">BACK</v-btn>
@@ -67,6 +121,27 @@ function onDup(v: boolean | null) {
         <v-btn size="x-small" @click="shortcut('power')">电源</v-btn>
         <v-btn size="x-small" @click="shortcut('rotate')">旋转</v-btn>
       </div>
+
+      <!-- A3 文本输入 -->
+      <div class="d-flex ga-2 mt-2">
+        <v-text-field
+          v-model="textInput"
+          label="发送文本"
+          placeholder="发送文本（需设备启用 ADBKeyboard 输入法）"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="flex-grow-1"
+          @keydown.enter.prevent="sendText"
+        />
+        <v-btn size="small" color="primary" :disabled="!textInput" @click="sendText">发送</v-btn>
+      </div>
+
+      <!-- A4 exec 控制台 -->
+      <div class="mt-2">
+        <ExecConsole :device-id="device.id" />
+      </div>
+
       <div class="d-flex align-center ga-2 mt-1">
         <v-switch v-model="deviceDup" label="手机出声" density="compact" hide-details @update:model-value="onDup" />
       </div>

@@ -10,20 +10,21 @@ import (
 
 	"github.com/coder/websocket"
 
+	"scrcpy-lan/webui/internal/bus"
 	"scrcpy-lan/webui/internal/control"
 	"scrcpy-lan/webui/internal/device"
 )
 
 type noopBroadcaster struct{}
 
-func (noopBroadcaster) PublishSession(string, device.SessionInfo)          {}
-func (noopBroadcaster) PublishFrame(string, *device.VideoFrame)            {}
-func (noopBroadcaster) PublishAudioFrame(string, *device.AudioFrame)       {}
+func (noopBroadcaster) PublishSession(string, device.SessionInfo)           {}
+func (noopBroadcaster) PublishFrame(string, *device.VideoFrame)             {}
+func (noopBroadcaster) PublishAudioFrame(string, *device.AudioFrame)        {}
 func (noopBroadcaster) PublishDeviceMessage(string, *control.DeviceMessage) {}
 
 func TestHandlerOriginAllowList(t *testing.T) {
 	hub := NewHub()
-	h := NewHandler(hub, device.NewManager(noopBroadcaster{}))
+	h := NewHandler(hub, device.NewManager(noopBroadcaster{}), bus.NewBus())
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 

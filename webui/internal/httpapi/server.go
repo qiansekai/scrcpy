@@ -8,16 +8,19 @@ import (
 	"strings"
 
 	"scrcpy-lan/webui/internal/device"
+	"scrcpy-lan/webui/internal/status"
 	"scrcpy-lan/webui/internal/store"
 )
 
-func New(cfg *store.Config, mgr *device.Manager, configPath string) http.Handler {
+func New(cfg *store.Config, mgr *device.Manager, configPath string, collector *status.Collector) http.Handler {
 	mux := http.NewServeMux()
-	api := &api{cfg: cfg, mgr: mgr, configPath: configPath}
+	api := &api{cfg: cfg, mgr: mgr, configPath: configPath, collector: collector}
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("/api/devices", api.handleDevices)
+	mux.HandleFunc("/api/devices/discover", api.handleDiscover)
+	mux.HandleFunc("/api/devices/batch/", api.handleBatch)
 	mux.HandleFunc("/api/devices/", api.handleDevice)
 
 	dist := filepath.Join("web", "dist")

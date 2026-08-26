@@ -4,6 +4,7 @@ import com.genymobile.scrcpy.AndroidVersions;
 import com.genymobile.scrcpy.AsyncProcessor;
 import com.genymobile.scrcpy.CleanUp;
 import com.genymobile.scrcpy.Options;
+import com.genymobile.scrcpy.Workarounds;
 import com.genymobile.scrcpy.audio.AudioCapture;
 import com.genymobile.scrcpy.device.Device;
 import com.genymobile.scrcpy.display.DisplayInfo;
@@ -23,10 +24,12 @@ import com.genymobile.scrcpy.wrappers.ClipboardManager;
 import com.genymobile.scrcpy.wrappers.InputManager;
 import com.genymobile.scrcpy.wrappers.ServiceManager;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.util.Pair;
 import android.view.InputDevice;
 import android.view.KeyCharacterMap;
@@ -479,6 +482,10 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
     }
 
     private int injectText(String text) {
+        // ADBKeyboard 路径优先：支持中文等无法映射到按键事件的字符。
+        if (isAdbKeyboardEnabled() && injectTextViaAdbKeyboard(text)) {
+            return text.length();
+        }
         int successCount = 0;
         for (char c : text.toCharArray()) {
             if (!injectChar(c)) {
@@ -488,6 +495,37 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
             successCount++;
         }
         return successCount;
+    }
+
+    /**
+     * ADBKeyboard（com.android.adbkeyboard/.AdbIME）注入：向已启用的 IME 发
+     * ADB_INPUT_TEXT 广播，由其 commitText 到当前焦点编辑框。要求 ADBKeyboard
+     * 已安装、已启用且为当前输入法。
+     */
+    private boolean injectTextViaAdbKeyboard(String text) {
+        try {
+            Intent intent = new Intent("ADB_INPUT_TEXT");
+            intent.putExtra("msg", text);
+            Device.sendBroadcast(intent);
+            return true;
+        } catch (Throwable t) {
+            Ln.w("ADB keyboard injection failed: " + t.getMessage());
+            return false;
+        }
+    }
+
+    private boolean isAdbKeyboardEnabled() {
+        try {
+            Context context = Workarounds.getAppContext();
+            if (context == null) {
+                return false;
+            }
+            String enabled = Settings.Secure.getString(context.getContentResolver(),
+                    Settings.Secure.ENABLED_INPUT_METHODS);
+            return enabled != null && enabled.contains("com.android.adbkeyboard/.AdbIME");
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private Pair<Point, Integer> getEventPointAndDisplayId(Position position) {

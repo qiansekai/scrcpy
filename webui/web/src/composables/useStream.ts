@@ -18,6 +18,22 @@ export function setAudioBufMs(ms: number) {
   }
 }
 
+// WS 状态广播 {type:"status"} / 告警 {type:"alert"} 的类型。与后端 status.Info 对齐。
+export interface StreamStatus {
+  id: string
+  online: boolean
+  battery: number
+  plugged: boolean
+  model: string
+  android: string
+}
+
+export interface StreamAlert {
+  id: string
+  level: 'offline' | 'lowbattery'
+  msg: string
+}
+
 export interface StreamHandle {
   connected: Ref<boolean>
   dims: { width: number; height: number }
@@ -26,10 +42,19 @@ export interface StreamHandle {
   send: (msg: Record<string, unknown>) => void
 }
 
+export interface StreamOptions {
+  throttle?: number
+  fixedCanvas?: boolean
+  noAudio?: boolean
+  onClipboard?: (text: string) => void
+  onStatus?: (status: StreamStatus) => void
+  onAlert?: (alert: StreamAlert) => void
+}
+
 export function useStream(
   deviceId: string,
   canvas: HTMLCanvasElement,
-  opts?: { throttle?: number; fixedCanvas?: boolean; noAudio?: boolean; onClipboard?: (text: string) => void },
+  opts?: StreamOptions,
 ): StreamHandle {
   let ws: WebSocket | null = null
   let decoder: VideoDecoder | null = null
@@ -318,6 +343,10 @@ export function useStream(
                 configData = null
               } else if (m.type === 'clipboard') {
                 opts?.onClipboard?.(m.text ?? '')
+              } else if (m.type === 'status') {
+                opts?.onStatus?.(m as StreamStatus)
+              } else if (m.type === 'alert') {
+                opts?.onAlert?.(m as StreamAlert)
               }
             } catch (e) {
               console.error('WS 消息解析失败', e)
@@ -327,17 +356,40 @@ export function useStream(
           handleBinary(ev.data as ArrayBuffer)
         }
         ws.onclose = () => {
+          // 连接的"真实状态"：close 后立即置 false，供 UI 判断在线/重连。
           connected.value = false
           decoder?.close()
           decoder = null
+          // 断线重连会建立新会话；重置流状态，避免陈旧 H.264 参数集/音频配置
+          // 与重连后的首帧 IDR 不匹配导致花屏或无声。
+          codecString = null
+          configData = null
+          width = 0
+          height = 0
+          dims.width = 0
+          dims.height = 0
+          firstKeySeen = false
+          firstDrawn = false
+          frameCount = 0
           closeAudio()
         }
       })
     },
     disconnect() {
+      // 主动断开：与 onclose 保持一致，重置会话缓存避免复用陈旧状态。
       ws?.close()
+      connected.value = false
       decoder?.close()
       decoder = null
+      codecString = null
+      configData = null
+      width = 0
+      height = 0
+      dims.width = 0
+      dims.height = 0
+      firstKeySeen = false
+      firstDrawn = false
+      frameCount = 0
       closeAudio()
     },
     send(msg) {

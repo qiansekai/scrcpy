@@ -109,10 +109,20 @@ public final class Workarounds {
             Field mInitialApplicationField = ACTIVITY_THREAD_CLASS.getDeclaredField("mInitialApplication");
             mInitialApplicationField.setAccessible(true);
             mInitialApplicationField.set(ACTIVITY_THREAD, app);
+
+            // 保存给需要 ContentResolver 的场景（如查询启用的输入法）。
+            appContext = app;
         } catch (Throwable throwable) {
             // this is a workaround, so failing is not an error
             Ln.d("Could not fill app context: " + throwable.getMessage());
         }
+    }
+
+    // fillAppContext() 填充的 Application（可作 Context 用），未填充时为 null。
+    private static Application appContext;
+
+    public static Context getAppContext() {
+        return appContext;
     }
 
     private static void fillConfigurationController() {

@@ -83,8 +83,8 @@ func (h *Hub) PublishSession(id string, s device.SessionInfo) {
 	h.state[id].configFrame = nil
 	h.state[id].keyFrame = nil
 	h.state[id].audioConfig = nil
-	h.broadcastLocked(id, payload)
 	h.mu.Unlock()
+	h.fanout(id, payload)
 }
 
 func (h *Hub) PublishAudioFrame(id string, f *device.AudioFrame) {
@@ -100,11 +100,11 @@ func (h *Hub) PublishAudioFrame(id string, f *device.AudioFrame) {
 			h.state[id] = &hubState{}
 		}
 		h.state[id].audioConfig = out
-		h.broadcastLocked(id, out)
 		h.mu.Unlock()
+		h.fanout(id, out)
 		return
 	}
-	h.broadcast(id, out)
+	h.fanout(id, out)
 }
 
 func (h *Hub) PublishFrame(id string, f *device.VideoFrame) {
@@ -127,11 +127,11 @@ func (h *Hub) PublishFrame(id string, f *device.VideoFrame) {
 		} else {
 			h.state[id].keyFrame = out
 		}
-		h.broadcastLocked(id, out)
 		h.mu.Unlock()
+		h.fanout(id, out)
 		return
 	}
-	h.broadcast(id, out)
+	h.fanout(id, out)
 }
 
 func (h *Hub) PublishDeviceMessage(id string, m *control.DeviceMessage) {
@@ -139,18 +139,28 @@ func (h *Hub) PublishDeviceMessage(id string, m *control.DeviceMessage) {
 		return
 	}
 	payload := []byte(`{"type":"clipboard","text":` + jsonQuote(m.Text) + `}`)
-	h.broadcast(id, payload)
+	h.fanout(id, payload)
 }
 
-func (h *Hub) broadcast(deviceID string, b []byte) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	h.broadcastLocked(deviceID, b)
+// PublishJSON 把一条任意 JSON 文本消息发给某设备的所有浏览器连接。
+// 用于 status/alert 等非流式控制面消息（ws 写侧按非 0x01/0x02 前缀自动走文本帧）。
+func (h *Hub) PublishJSON(deviceID string, payload []byte) {
+	h.fanout(deviceID, payload)
 }
 
-// broadcastLocked fans out to one device's conns; the caller holds h.mu.
-func (h *Hub) broadcastLocked(deviceID string, b []byte) {
-	for _, c := range h.subs[deviceID] {
+// fanout 把一条消息发给某设备的所有浏览器连接。快照连接列表后解锁再写，
+// 避免在持锁状态下执行 conn.Write（conn 可能慢，且回调里可能再进 hub）。
+func (h *Hub) fanout(deviceID string, b []byte) {
+	conns := func() []conn {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		out := make([]conn, 0, len(h.subs[deviceID]))
+		for _, c := range h.subs[deviceID] {
+			out = append(out, c)
+		}
+		return out
+	}()
+	for _, c := range conns {
 		c.Write(b)
 	}
 }

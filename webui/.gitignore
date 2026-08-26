@@ -6,3 +6,6 @@ server.out.log
 server.err.log
 web/vite.out.log
 web/vite.err.log
+
+webui-out.log
+webui-err.log

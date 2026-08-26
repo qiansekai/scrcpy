@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -28,16 +27,9 @@ type ExecResult struct {
 // ExecCommand runs one shell command on the device via its admin channel (27184).
 // It dials per command for now; M-series work may move this to a long-lived session.
 func (m *Manager) ExecCommand(id string, cmd string) (ExecResult, error) {
-	m.mu.RLock()
-	sess, ok := m.sessions[id]
-	m.mu.RUnlock()
-	if !ok {
-		return ExecResult{}, errors.New("no such device session")
-	}
-
-	addr := net.JoinHostPort(sess.cfg.IP, strconv.Itoa(defaultAdminPort))
-	if sess.cfg.Addr != "" {
-		addr = net.JoinHostPort(sess.cfg.Addr, strconv.Itoa(defaultAdminPort))
+	addr, err := m.AdminAddr(id)
+	if err != nil {
+		return ExecResult{}, err
 	}
 
 	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
@@ -76,11 +68,28 @@ func (m *Manager) ExecCommand(id string, cmd string) (ExecResult, error) {
 			// 设备端不区分 stdout/stderr 的实时块，统一累积。
 			stdout.Write(payload)
 		case adminTypeResult:
+			// RESULT payload = exitCode(4) + stdoutLen(4) + stdout + stderrLen(4) + stderr。
 			if len(payload) < 4 {
 				return ExecResult{}, errors.New("short RESULT payload")
 			}
-			exit := int(int32(binary.BigEndian.Uint32(payload[0:4])))
-			return ExecResult{ExitCode: exit, Stdout: stdout.String(), Stderr: stderr.String()}, nil
+			res := ExecResult{
+				ExitCode: int(int32(binary.BigEndian.Uint32(payload[0:4]))),
+				Stdout:   stdout.String(),
+				Stderr:   stderr.String(),
+			}
+			if len(payload) >= 12 {
+				soLen := int(binary.BigEndian.Uint32(payload[4:8]))
+				if 8+soLen <= len(payload) {
+					res.Stdout += string(payload[8 : 8+soLen])
+				}
+				if 8+soLen+4 <= len(payload) {
+					seLen := int(binary.BigEndian.Uint32(payload[8+soLen : 12+soLen]))
+					if 12+soLen+seLen <= len(payload) {
+						res.Stderr += string(payload[12+soLen : 12+soLen+seLen])
+					}
+				}
+			}
+			return res, nil
 		}
 	}
 }

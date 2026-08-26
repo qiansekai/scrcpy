@@ -60,6 +60,17 @@ export function useKeyboard(send: (msg: Record<string, unknown>) => void) {
       handleClipboard(e)
       return
     }
+    // Enter 防双击：长按重复触发时 e.repeat 为 true，跳过避免重复注入；
+    // 若焦点停在某个按钮上，按 Enter/Space 会再次"点击"该按钮导致二次触发，
+    // 这里直接 blur 掉源头按钮打断默认点击行为。
+    if (e.code === 'Enter' && e.repeat) {
+      e.preventDefault()
+      return
+    }
+    if (e.code === 'Enter' || e.code === 'Space') {
+      const t = e.target as HTMLElement | null
+      if (t && t.tagName === 'BUTTON') t.blur()
+    }
     sendKey(0, e)
   }
   function onKeyUp(e: KeyboardEvent) {

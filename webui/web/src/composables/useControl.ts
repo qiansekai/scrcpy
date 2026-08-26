@@ -24,7 +24,27 @@ export function useControl(
   function sendTouch(action: number, e: PointerEvent) {
     const p = canvasPoint(e)
     if (!p) return
-    send({ type: 'touch', action, x: p.x, y: p.y, screenW: dims.width, screenH: dims.height })
+    const msg: Record<string, unknown> = {
+      type: 'touch',
+      action,
+      x: p.x,
+      y: p.y,
+      screenW: dims.width,
+      screenH: dims.height,
+    }
+    // 压力：优先取 TouchEvent.force（触摸事件），否则用 PointerEvent.pressure
+    // （指针事件标准 0-1 属性）。换算成 0-65535；两者都缺失（如鼠标）则省略，
+    // 后端按默认压力处理。
+    let force: number | undefined
+    if (e instanceof TouchEvent) {
+      force = e.touches[0]?.force
+    } else if (typeof (e as PointerEvent).pressure === 'number') {
+      force = (e as PointerEvent).pressure
+    }
+    if (typeof force === 'number' && force >= 0) {
+      msg.pressure = Math.round(force * 65535)
+    }
+    send(msg)
   }
 
   function onPointerDown(e: PointerEvent) {

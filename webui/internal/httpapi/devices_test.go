@@ -26,7 +26,7 @@ func (noopBroadcaster) PublishDeviceMessage(string, *control.DeviceMessage) {}
 func TestDeviceLifecycle(t *testing.T) {
 	cfg := &store.Config{}
 	mgr := device.NewManager(&noopBroadcaster{})
-	h := New(cfg, mgr, "")
+	h := New(cfg, mgr, "", nil)
 
 	// 空列表
 	req := httptest.NewRequest("GET", "/api/devices", nil)
@@ -89,7 +89,7 @@ func TestAddReachablePersistsAndLists(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "devices.json")
 	cfg := &store.Config{}
 	mgr := device.NewManager(&noopBroadcaster{})
-	h := New(cfg, mgr, configPath)
+	h := New(cfg, mgr, configPath, nil)
 
 	ip := ln.Addr().String()
 	req := httptest.NewRequest("POST", "/api/devices", strings.NewReader(`{"ip":"`+ip+`"}`))
@@ -150,7 +150,7 @@ func TestDeleteRemovesFromManagerAndConfig(t *testing.T) {
 	cfg := &store.Config{Devices: []store.DeviceConfig{{ID: id, IP: "127.0.0.1"}}}
 	mgr := device.NewManager(&noopBroadcaster{})
 	mgr.Add(device.SessionConfig{ID: id, IP: "127.0.0.1", Addr: ln.Addr().String()})
-	h := New(cfg, mgr, configPath)
+	h := New(cfg, mgr, configPath, nil)
 
 	req := httptest.NewRequest("DELETE", "/api/devices/"+id, nil)
 	rec := httptest.NewRecorder()
@@ -180,7 +180,7 @@ func TestDeleteRemovesFromManagerAndConfig(t *testing.T) {
 func TestStaticFallbackWhenNoDist(t *testing.T) {
 	cfg := &store.Config{}
 	mgr := device.NewManager(&noopBroadcaster{})
-	h := New(cfg, mgr, "")
+	h := New(cfg, mgr, "", nil)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	rec := httptest.NewRecorder()

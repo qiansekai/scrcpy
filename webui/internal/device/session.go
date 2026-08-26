@@ -78,6 +78,8 @@ type StreamSession struct {
 	name string
 	mu   sync.RWMutex
 
+	stopOnce sync.Once
+
 	// 原生客户端桥接（AttachNative 用）
 	videoHeader []byte
 	audioHeader []byte
@@ -107,8 +109,9 @@ func NewStreamSession(cfg SessionConfig, b Broadcaster) *StreamSession {
 
 func (s *StreamSession) Start() { go s.run() }
 
+// Stop 幂等：可重复调用，第一次关闭 stop 并等待运行协程退出。
 func (s *StreamSession) Stop() {
-	close(s.stop)
+	s.stopOnce.Do(func() { close(s.stop) })
 	<-s.done
 }
 
@@ -118,12 +121,12 @@ func (s *StreamSession) Name() string {
 	return s.name
 }
 
-// SendControl queues a control message to be written to the device. Blocks if
-// the queue is full so no touch-up is ever dropped.
+// SendControl 把控制消息排入写队列。断线重连期间队列可能满，此时直接丢弃
+// 而非阻塞调用方（hub 的写路径不允许被卡住）；重连后输入自然恢复。
 func (s *StreamSession) SendControl(b []byte) {
 	select {
 	case s.ctrl <- b:
-	case <-s.stop:
+	default:
 	}
 }
 
@@ -145,8 +148,9 @@ func (s *StreamSession) run() {
 			return
 		case <-time.After(backoff):
 		}
-		if backoff < 30*time.Second {
-			backoff *= 2
+		backoff *= 2
+		if backoff > 30*time.Second {
+			backoff = 30 * time.Second
 		}
 	}
 }
@@ -157,17 +161,21 @@ func (s *StreamSession) connectOnce() error {
 		addr = s.cfg.Addr
 	}
 
-	video, err := net.Dial("tcp", addr)
+	// 拨号必须带超时：对离线设备的无超时 Dial 会阻塞几十秒，拖住 Stop/Remove。
+	dial := func() (net.Conn, error) {
+		return net.DialTimeout("tcp", addr, 5*time.Second)
+	}
+	video, err := dial()
 	if err != nil {
 		return err
 	}
 	defer video.Close()
-	audio, err := net.Dial("tcp", addr)
+	audio, err := dial()
 	if err != nil {
 		return err
 	}
 	defer audio.Close()
-	ctl, err := net.Dial("tcp", addr)
+	ctl, err := dial()
 	if err != nil {
 		return err
 	}
@@ -326,6 +334,25 @@ func (m *Manager) Session(id string) *StreamSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessions[id]
+}
+
+// AdminAddr 返回设备管理通道（27184）的 host:port 地址，供批量任务等直接
+// 建连使用。Addr 带端口时只取主机名部分。
+func (m *Manager) AdminAddr(id string) (string, error) {
+	m.mu.RLock()
+	sess, ok := m.sessions[id]
+	m.mu.RUnlock()
+	if !ok {
+		return "", io.ErrClosedPipe
+	}
+	host := sess.cfg.IP
+	if sess.cfg.Addr != "" {
+		host = sess.cfg.Addr
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return net.JoinHostPort(host, strconv.Itoa(defaultAdminPort)), nil
 }
 
 // First 返回任意一个活动会话（单设备场景用），无则 nil。

@@ -17,10 +17,10 @@ type AudioFrame struct {
 // same [12B frame meta + payload]* framing as video (no dummy byte, no
 // device name, no session meta).
 type AudioStream struct {
-	r     io.Reader
-	Codec [4]byte
-	hdr   [12]byte
-	frame []byte
+	r      io.Reader
+	Codec  [4]byte
+	hdr    [12]byte
+	frame  []byte
 	header []byte // codec id，原生客户端桥接重放
 }
 

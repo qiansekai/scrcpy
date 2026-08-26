@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"scrcpy-lan/webui/internal/bus"
 	"scrcpy-lan/webui/internal/control"
 	"scrcpy-lan/webui/internal/device"
 )
@@ -30,17 +31,22 @@ type CtrlMsg struct {
 	CopyKey   int     `json:"copyKey,omitempty"`
 	Paste     bool    `json:"paste,omitempty"`
 	On        bool    `json:"on,omitempty"`
+	Pressure  uint16  `json:"pressure,omitempty"`
+	// 主控-被控（见 internal/bus）：
+	Master string   `json:"master,omitempty"`
+	Slaves []string `json:"slaves,omitempty"`
 }
 
 type Handler struct {
 	hub     *Hub
 	manager *device.Manager
 	ctrl    *control.Writer
+	bus     *bus.Bus
 	origins []string
 }
 
-func NewHandler(hub *Hub, manager *device.Manager) *Handler {
-	return &Handler{hub: hub, manager: manager, ctrl: &control.Writer{}, origins: defaultOriginPatterns()}
+func NewHandler(hub *Hub, manager *device.Manager, b *bus.Bus) *Handler {
+	return &Handler{hub: hub, manager: manager, ctrl: &control.Writer{}, bus: b, origins: defaultOriginPatterns()}
 }
 
 // defaultOriginPatterns 允许 localhost/回环 + 本机所有 LAN IPv4 地址，
@@ -136,11 +142,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // route translates one browser control message into scrcpy control bytes and
-// hands it to the device session.
+// hands it to the device session. 主控模式下 touch/key/text 等消息还会经
+// bus 广播（换算坐标）到被控设备。
 func (h *Handler) route(deviceID string, m CtrlMsg) {
+	// 主控-被控控制面消息不产生设备字节流。
+	switch m.Type {
+	case "setMaster":
+		h.bus.SetMaster(m.Master)
+		return
+	case "setSlaves":
+		h.bus.SetSlaves(m.Slaves...)
+		return
+	}
 	var b []byte
 	switch m.Type {
 	case "touch":
+		pressure := m.Pressure
+		if pressure == 0 {
+			pressure = 0xFFFF
+		}
 		b = h.ctrl.InjectTouch(control.Touch{
 			Action:    m.Action,
 			PointerID: 0,
@@ -148,7 +168,7 @@ func (h *Handler) route(deviceID string, m CtrlMsg) {
 			Y:         int32(m.Y),
 			ScreenW:   uint16(m.ScreenW),
 			ScreenH:   uint16(m.ScreenH),
-			Pressure:  0xFFFF,
+			Pressure:  pressure,
 		})
 	case "key":
 		b = h.ctrl.InjectKey(control.Key{Action: m.Action, Keycode: int32(m.Keycode)})
@@ -170,7 +190,9 @@ func (h *Handler) route(deviceID string, m CtrlMsg) {
 		b = append(h.ctrl.InjectKey(control.Key{Action: control.KeyActionDown, Keycode: 187}),
 			h.ctrl.InjectKey(control.Key{Action: control.KeyActionUp, Keycode: 187})...)
 	case "power":
-		b = h.ctrl.InjectKey(control.Key{Action: control.KeyActionDown, Keycode: 26})
+		// 电源键必须 DOWN+UP 成对，否则设备会卡在按键状态。
+		b = append(h.ctrl.InjectKey(control.Key{Action: control.KeyActionDown, Keycode: 26}),
+			h.ctrl.InjectKey(control.Key{Action: control.KeyActionUp, Keycode: 26})...)
 	case "rotate":
 		b = h.ctrl.RotateDevice()
 	case "audioDup":
@@ -181,5 +203,45 @@ func (h *Handler) route(deviceID string, m CtrlMsg) {
 	}
 	if err := h.manager.SendControl(deviceID, b); err != nil {
 		log.Printf("send control to %s: %v", deviceID, err)
+	}
+	h.forwardToSlaves(deviceID, m, b)
+}
+
+// forwardToSlaves 主控模式下把控制消息同步给被控：touch 经 bus 坐标换算，
+// 其余无需换算的消息原样转发（home/back/power 等组合字节同样有效）。
+func (h *Handler) forwardToSlaves(deviceID string, m CtrlMsg, b []byte) {
+	if h.bus == nil || h.bus.Master() != deviceID {
+		return
+	}
+	slaves := h.bus.Slaves()
+	if len(slaves) == 0 {
+		return
+	}
+	switch m.Type {
+	case "touch", "key", "text", "rotate", "audioDup":
+		msg := bus.Msg{
+			Type:     m.Type,
+			X:        m.X,
+			Y:        m.Y,
+			ScreenW:  m.ScreenW,
+			ScreenH:  m.ScreenH,
+			Action:   m.Action,
+			Keycode:  m.Keycode,
+			Text:     m.Text,
+			On:       m.On,
+			Pressure: m.Pressure,
+		}
+		for slave, sb := range h.bus.Forward(deviceID, msg) {
+			if err := h.manager.SendControl(slave, sb); err != nil {
+				log.Printf("send control to slave %s: %v", slave, err)
+			}
+		}
+	default:
+		// 无坐标的消息（按键组合/剪贴板等）直接原样转发。
+		for _, slave := range slaves {
+			if err := h.manager.SendControl(slave, b); err != nil {
+				log.Printf("send control to slave %s: %v", slave, err)
+			}
+		}
 	}
 }
