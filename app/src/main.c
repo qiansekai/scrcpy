@@ -95,10 +95,23 @@ main_scrcpy(int argc, char *argv[]) {
     }
 
 #ifdef HAVE_USB
-    ret = args.opts.otg ? scrcpy_otg(&args.opts) : scrcpy(&args.opts);
-#else
-    ret = scrcpy(&args.opts);
+    if (args.opts.otg) {
+        ret = scrcpy_otg(&args.opts);
+    } else
 #endif
+    {
+        // --reconnect：连接失败或设备断开（非零退出码）时自动重连；
+        // 窗口正常关闭（退出码 0）时结束。
+        for (;;) {
+            ret = scrcpy(&args.opts);
+            if (ret == SCRCPY_EXIT_SUCCESS || !args.opts.reconnect) {
+                break;
+            }
+            LOGI("Reconnecting in %u ms...",
+                 (unsigned) args.opts.reconnect_delay);
+            SDL_Delay(args.opts.reconnect_delay);
+        }
+    }
 
     sc_main_thread_destroy();
 

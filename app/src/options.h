@@ -338,6 +338,8 @@ struct scrcpy_options {
     bool stay_awake;
     bool force_adb_forward;
     bool no_adb;
+    bool reconnect;
+    uint32_t reconnect_delay; // ms
     bool disable_screensaver;
     bool forward_key_repeat;
     bool legacy_paste;

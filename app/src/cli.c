@@ -38,6 +38,8 @@ enum {
     OPT_VIDEO_CODEC_OPTIONS,
     OPT_FORCE_ADB_FORWARD,
     OPT_NO_ADB,
+    OPT_RECONNECT,
+    OPT_RECONNECT_DELAY,
     OPT_DISABLE_SCREENSAVER,
     OPT_SHORTCUT_MOD,
     OPT_NO_KEY_REPEAT,
@@ -415,6 +417,19 @@ static const struct sc_option options[] = {
         .longopt = "no-adb",
         .text = "Do not use adb. Connect directly to --tunnel-host:--tunnel-port "
                 "(the scrcpy server must already be running).",
+    },
+    {
+        .longopt_id = OPT_RECONNECT,
+        .longopt = "reconnect",
+        .text = "Automatically reconnect when the connection fails or the "
+                "device disconnects (stop by closing the window).",
+    },
+    {
+        .longopt_id = OPT_RECONNECT_DELAY,
+        .longopt = "reconnect-delay",
+        .argdesc = "ms",
+        .text = "Delay between two reconnect attempts, in milliseconds "
+                "(default 1000).",
     },
     {
         .shortopt = 'G',
@@ -2781,6 +2796,19 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             case OPT_NO_ADB:
                 opts->no_adb = true;
                 break;
+            case OPT_RECONNECT:
+                opts->reconnect = true;
+                break;
+            case OPT_RECONNECT_DELAY: {
+                long value;
+                bool ok = parse_integer_arg(optarg, &value, false, 0, 0x7FFFFFFF,
+                                            "reconnect delay");
+                if (!ok) {
+                    return false;
+                }
+                opts->reconnect_delay = (uint32_t) value;
+                break;
+            }
             case OPT_DISABLE_SCREENSAVER:
                 opts->disable_screensaver = true;
                 break;

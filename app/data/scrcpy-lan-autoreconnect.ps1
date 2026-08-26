@@ -1,4 +1,4 @@
-﻿# scrcpy-lan 桌面端自动重连看门狗（PowerShell）
+# scrcpy-lan 桌面端自动重连看门狗（PowerShell）
 # 用法: 双击 scrcpy-lan-autoreconnect.bat，或
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scrcpy-lan-autoreconnect.ps1 [-HostIp <ip>] [-TunnelPort <port>]
 # 行为:
@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = "SilentlyContinue"
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $scrcpy = Join-Path $dir "scrcpy.exe"
-$scrcpyArgs = @("--no-adb", "--tunnel-host=$HostIp", "--tunnel-port=$TunnelPort")
+$scrcpyArgs = @("--no-adb", "--tunnel-host=$HostIp", "--tunnel-port=$TunnelPort", "--reconnect")
 
 function Test-Tunnel {
     # TCP 探测 tunnel 端口：通了说明设备端 server 在线（不建会话，仅连接即关）。
