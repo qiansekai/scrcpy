@@ -18,6 +18,7 @@ src = [
     'src/egl.c',
     'src/events.c',
     'src/file_pusher.c',
+    'src/file_pusher_lan.c',
     'src/fps_counter.c',
     'src/frame_buffer.c',
     'src/hwdec.c',

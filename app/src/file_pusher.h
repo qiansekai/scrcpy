@@ -25,7 +25,9 @@ struct sc_file_pusher_request_queue SC_VECDEQUE(struct sc_file_pusher_request);
 
 struct sc_file_pusher {
     struct sc_controller *controller; // used to send SCAN_FILE requests
-    char *serial;
+    char *serial;                     // NULL 表示无 adb（LAN 模式）
+    uint32_t tunnel_host;             // LAN 模式：admin 通道主机
+    uint16_t tunnel_port;             // LAN 模式：admin 通道端口（0=默认 27184）
     const char *push_target;
     sc_thread thread;
     sc_mutex mutex;
@@ -39,7 +41,8 @@ struct sc_file_pusher {
 
 bool
 sc_file_pusher_init(struct sc_file_pusher *fp, struct sc_controller *controller,
-                    const char *serial, const char *push_target);
+                    const char *serial, uint32_t tunnel_host,
+                    uint16_t tunnel_port, const char *push_target);
 
 void
 sc_file_pusher_destroy(struct sc_file_pusher *fp);

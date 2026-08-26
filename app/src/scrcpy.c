@@ -582,8 +582,11 @@ scrcpy(struct scrcpy_options *options) {
 
     struct sc_file_pusher *fp = NULL;
 
-    if (options->window && options->control && !options->no_adb) {
+    if (options->window && options->control) {
+        // 无 adb（LAN）模式同样启用文件推送：拖放 APK 安装/推文件走设备
+        // admin 通道（27184）自实现推送 + pm install，不依赖 adb。
         if (!sc_file_pusher_init(&s->file_pusher, &s->controller, serial,
+                                 options->tunnel_host, options->tunnel_port,
                                  options->push_target)) {
             goto end;
         }
