@@ -1,4 +1,4 @@
-# scrcpy-lan 桌面端自动重连看门狗（PowerShell）
+﻿# scrcpy-lan 桌面端自动重连看门狗（PowerShell）
 # 用法: 双击 scrcpy-lan-autoreconnect.bat，或
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scrcpy-lan-autoreconnect.ps1 [-HostIp <ip>] [-TunnelPort <port>]
 # 行为:
