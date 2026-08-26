@@ -285,6 +285,12 @@ public final class Server {
             if (Os.getuid() == 0) {
                 // Copy-paste does not work with root user
                 // <https://github.com/Genymobile/scrcpy/issues/6224>
+                // Keep the "inet" group (3003) as egid: vendor kernels with
+                // CONFIG_ANDROID_PARANOID_NETWORK deny socket() to processes
+                // that lost root capabilities unless they carry the inet
+                // group, so the resident LAN server cannot bind its tunnel
+                // port after setuid() on such kernels (e.g. MIUI 4.19).
+                Os.setgid(3003);
                 Os.setuid(2000);
             }
         } catch (Exception e) {
