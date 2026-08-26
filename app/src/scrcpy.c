@@ -584,9 +584,10 @@ scrcpy(struct scrcpy_options *options) {
 
     if (options->window && options->control) {
         // 无 adb（LAN）模式同样启用文件推送：拖放 APK 安装/推文件走设备
-        // admin 通道（27184）自实现推送 + pm install，不依赖 adb。
+        // admin 通道（固定 27184，与镜像 tunnel 端口无关）自实现推送 +
+        // pm install，不依赖 adb。tunnel_port 传 0 表示用 admin 默认端口。
         if (!sc_file_pusher_init(&s->file_pusher, &s->controller, serial,
-                                 options->tunnel_host, options->tunnel_port,
+                                 options->tunnel_host, 0,
                                  options->push_target)) {
             goto end;
         }
