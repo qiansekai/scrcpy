@@ -20,7 +20,7 @@ webui/ 目录从零建成，真机（Redmi M2012K11AC, 192.168.1.18, Android 13�
 - **设备**：`192.168.1.18`，root daemon 常驻 27183（`scrcpy-lan-daemon.sh` + `scrcpy-lan-server.jar` 在 /data/local/tmp）
 - **设备 adb**：serial `9e82d8ed`（USB 连接）；`svc power stayon true` 已设（屏幕常亮，测试方便，想还原就 `adb shell svc power stayon false`）
 - **Go 中控**：`webui/webui.exe`（服务 8080 web + 27182 原生代理）。重建：`cd webui; go build -o webui.exe ./cmd/webui`
-- **原生客户端**：`build-win-v4\app\scrcpy.exe`（缺 DLL，需 `$env:PATH="D:\msys64\ucrt64\bin;"+$env:PATH`）
+- **原生客户端**：`build-win-v4\app\scrcpy.exe`（缺 DLL，需 `$env:PATH="D:\Kita-Tools\DevEnv\msys64\ucrt64\bin;"+$env:PATH`）
   - 连代理：`scrcpy.exe --no-adb --tunnel-host 127.0.0.1 --tunnel-port 27182`
   - 直连设备（不用 web 时）：`--tunnel-host 192.168.1.18 --tunnel-port 27183`
 - **前端 dev**：`webui/web` 下 `npm run dev`（5173，HMR）；生产 `npx vite build` 出 dist（webui.exe 读磁盘）
