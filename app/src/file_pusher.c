@@ -243,6 +243,10 @@ lan_push_file(struct sc_file_pusher *fp, const char *file) {
         return;
     }
     sc_strbuf_append_str(&remote, fp->push_target);
+    // push_target 可能不带结尾斜杠（--push-target=/sdcard/Download），补上
+    if (remote.len && remote.s[remote.len - 1] != '/') {
+        sc_strbuf_append_char(&remote, '/');
+    }
     sc_strbuf_append_str(&remote, name);
     sc_strbuf_shrink(&remote);
 
