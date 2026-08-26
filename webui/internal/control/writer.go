@@ -13,7 +13,8 @@ const (
 	TypeGetClipboard       = 8
 	TypeSetClipboard       = 9
 	TypeRotateDevice       = 11
-	TypeAudioDup           = 22
+	// 22 is upstream TYPE_SCAN_FILE (v4.1); our fork's audio dup toggle is 23
+	TypeAudioDup = 23
 )
 
 const (

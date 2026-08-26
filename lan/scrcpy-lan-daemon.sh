@@ -58,7 +58,7 @@ guard() {
 
 guard "[c]om.genymobile.scrcpy.Server" "$SERVER_LOG" \
     com.genymobile.scrcpy.Server \
-    4.0 scid=-1 log_level=info tunnel_forward=true tunnel_port=$PORT cleanup=false $AUDIO_ARGS &
+    4.1 scid=-1 log_level=info tunnel_forward=true tunnel_port=$PORT cleanup=false $AUDIO_ARGS &
 
 guard "[c]om.genymobile.scrcpy.admin.AdminServer" "$ADMIN_LOG" \
     com.genymobile.scrcpy.admin.AdminServer \
