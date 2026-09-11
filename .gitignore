@@ -10,3 +10,6 @@ local.properties
 /scrcpy-server
 
 /client-*.log
+
+# 本地工具目录.superpowers/
+
