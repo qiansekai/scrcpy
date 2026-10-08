@@ -14,4 +14,4 @@ if [ "$AUDIO_MODE" = "playback" ]; then
 fi
 CLASSPATH=/data/local/tmp/scrcpy-lan-server.jar \
   app_process / com.genymobile.scrcpy.Server \
-  4.1 scid=-1 log_level=info tunnel_forward=true tunnel_port=$PORT cleanup=false $AUDIO_ARGS
+  5.0 scid=-1 log_level=info tunnel_forward=true tunnel_port=$PORT cleanup=false $AUDIO_ARGS
